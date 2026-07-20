@@ -7,10 +7,32 @@ st.set_page_config(
 )
 
 st.title("⚔️ 部隊対戦シミュレータ")
-st.caption("自軍 vs 敵軍 8ターン対戦・負傷兵＆回復システム（検証データ準拠完全版）")
+st.caption("自軍 vs 敵軍 8ターン対戦（兵種相性・最低保証床補正・負傷兵完全実装版）")
+
+# --- 兵種相性の関係定義 ---
+# 相性環: 足軽 -> 騎兵 -> 弓兵 -> 鉄砲 -> 足軽
+TROOP_TYPES = ["足軽", "騎兵", "弓兵", "鉄砲"]
+
+def get_troop_advantage(attacker_type, defender_type):
+    """
+    兵種相性による倍率判定
+    - 有利: 1.125 (+12.5%)
+    - 不利: 0.875 (-12.5%)
+    - 相対差: 約1.29倍
+    """
+    adv_map = {
+        "足軽": "騎兵",
+        "騎兵": "弓兵",
+        "弓兵": "鉄砲",
+        "鉄砲": "足軽",
+    }
+    if adv_map.get(attacker_type) == defender_type:
+        return 1.125  # 有利
+    elif adv_map.get(defender_type) == attacker_type:
+        return 0.875  # 不利
+    return 1.0  # 中立
 
 # --- 伝授・事件戦法データベース ---
-# 構造: "戦法名": [発動確率(%), ダメージ/回復率(%), "品質", "タイプ", "傷害属性/効果類型("兵刃", "計略", "回復", "休養")"]
 SKILL_DATABASE = {
     "（なし）": [0, 0, "-", "-", "兵刃"],
     
@@ -39,7 +61,7 @@ SKILL_DATABASE = {
     "有備無患": [40, 60, "S", "能動", "回復"],         # 直接回復型・知略依存
     "按甲休兵": [100, 140, "S", "受動", "休養_非依存"],   # 休養型・知略非依存
     "懐柔": [35, 48.9, "A", "能動", "休養"],           # 休養型・知略依存
-    "守禦": [100, 100, "A", "指揮", "回復_非依存"],     # 直接回復型・知略非依存（5T目発動）
+    "守禦": [100, 100, "A", "指揮", "回復_非依存"],     # 直接回復型・知略非依存
     "恵風和雨": [40, 88, "S", "指揮", "回復"],          # 直接回復型・知略依存
 }
 SKILL_LIST = sorted(list(SKILL_DATABASE.keys()))
@@ -59,7 +81,7 @@ OFFICER_DATABASE = {
     "黒田官兵衛": [113, 210, 167, "水の如し", 100, 88, "受動", "計略"],
     "豊臣秀吉": [111, 180, 170, "千成瓢箪", 100, 0, "指揮", "計略"],
     "本多忠勝": [229, 110, 190, "古今独歩", 100, 70, "受動", "兵刃"],
-    "本多正信": [43, 195, 120, "非常の器", 100, 66, "指揮", "休養"],  # 休養型固有戦法
+    "本多正信": [43, 195, 120, "非常の器", 100, 66, "指揮", "休養"],
     "徳川家康": [155, 231, 210, "三河魂", 100, 0, "指揮", "計略"],
     "武田信玄": [191, 202, 205, "風林火山", 100, 124, "指揮", "計略"],
     "山県昌景": [224, 120, 169, "武田之赤備", 100, 138, "受動", "兵刃"],
@@ -78,8 +100,14 @@ sim_trials = st.sidebar.selectbox(
     "対戦試行回数", [1000, 5000, 10000], index=0
 )
 
-def input_team_data(team_prefix, team_name, default_choices):
+def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
     st.markdown(f"### {team_name}")
+    
+    # 兵種選択
+    selected_troop = st.selectbox(
+        f"{team_name}の兵種を選択", TROOP_TYPES, index=default_troop_idx, key=f"{team_prefix}_troop"
+    )
+
     roles = ["主将", "副将1", "副将2"]
     tabs = st.tabs([f"【{r}】" for r in roles])
     team_officers = []
@@ -116,32 +144,39 @@ def input_team_data(team_prefix, team_name, default_choices):
                 "tousotsu": o_tousotsu,
                 "skills": skills
             })
-    return team_officers
+    return team_officers, selected_troop
 
 main_tab1, main_tab2 = st.tabs(["🔵 自軍（あなた）", "🔴 敵軍（対戦相手）"])
 
 with main_tab1:
-    my_team = input_team_data("my", "自軍編成", ["本多正信", "上杉謙信", "柴田勝家"])
+    my_team, my_troop = input_team_data("my", "自軍編成", ["本多正信", "上杉謙信", "柴田勝家"], default_troop_idx=1) # 騎兵
 
 with main_tab2:
-    enemy_team = input_team_data("enemy", "敵軍編成", ["徳川家康", "武田信玄", "今川義元"])
+    enemy_team, enemy_troop = input_team_data("enemy", "敵軍編成", ["徳川家康", "武田信玄", "今川義元"], default_troop_idx=2) # 弓兵
+
+# 相性倍率の計算表示
+my_advantage_mult = get_troop_advantage(my_troop, enemy_troop)
+enemy_advantage_mult = get_troop_advantage(enemy_troop, my_troop)
+
+col_adv1, col_adv2 = st.columns(2)
+with col_adv1:
+    st.info(f"🔵 **自軍({my_troop}) → 敵軍({enemy_troop})**: 相性倍率 **{my_advantage_mult}倍**")
+with col_adv2:
+    st.info(f"🔴 **敵軍({enemy_troop}) → 自軍({my_troop})**: 相性倍率 **{enemy_advantage_mult}倍**")
 
 st.write("---")
 
-# ──────────── 実測に基づくダメージ & 負傷兵・回復モデル ────────────
+# ──────────── 実測に基づくダメージ・兵種相性・回復モデル ────────────
 
 def get_h_hp(hp):
-    """共通の兵力カーブ H(兵力) の計算"""
+    """兵力カーブ H(兵力)"""
     if hp <= 1800:
         return hp * 0.10
     else:
         return (1800 * 0.10) + ((hp - 1800) ** 0.85) * 0.15
 
 def calc_heal_cap(skill_rate, chiryaku, current_hp, is_intel_dep=True):
-    """
-    回復上限 ＝ 回復率 ×（1.02×知略 ＋ H(兵力)）
-    ※知略非依存の場合は知略項を除外
-    """
+    """回復上限計算"""
     h_val = get_h_hp(current_hp)
     if is_intel_dep:
         base_val = (1.02 * chiryaku) + h_val
@@ -149,8 +184,11 @@ def calc_heal_cap(skill_rate, chiryaku, current_hp, is_intel_dep=True):
         base_val = h_val
     return skill_rate * base_val
 
-def get_floor_damage(current_hp, is_skill=False, dmg_rate=1.0):
-    """最低保証（床）計算"""
+def get_floor_damage(current_hp, is_skill=False, dmg_rate=1.0, troop_mult=1.0):
+    """
+    最低保証（床）計算:
+    実測により、兵種相性倍率（troop_mult）は床自体にも掛け合わされることが判明。
+    """
     if current_hp <= 600:
         base_floor = 11.0
     elif current_hp <= 3000:
@@ -159,15 +197,22 @@ def get_floor_damage(current_hp, is_skill=False, dmg_rate=1.0):
         base_floor = (18.75 * 3.0) + (16.0 * ((current_hp - 3000) / 1000.0))
 
     if is_skill:
-        return base_floor * (20.5 / 18.75) * dmg_rate
-    return base_floor
+        raw_floor = base_floor * (20.5 / 18.75) * dmg_rate
+    else:
+        raw_floor = base_floor
 
-def calc_damage(atk_stat, def_stat, current_hp, dmg_rate=1.0, is_skill=False):
-    """ダメージ計算ロジック"""
+    # 兵種相性を床値に直乗算
+    return raw_floor * troop_mult
+
+def calc_damage(atk_stat, def_stat, current_hp, dmg_rate=1.0, is_skill=False, troop_mult=1.0):
+    """
+    ダメージ計算:
+    与ダメージ全体に兵種相性倍率（1.125 / 0.875）を乗算する。
+    """
     if dmg_rate == 0:
         return 0
 
-    floor_val = get_floor_damage(current_hp, is_skill=is_skill, dmg_rate=dmg_rate)
+    floor_val = get_floor_damage(current_hp, is_skill=is_skill, dmg_rate=dmg_rate, troop_mult=troop_mult)
     eff_atk = atk_stat * 1.44
     eff_def = def_stat * 1.44
     stat_diff = eff_atk - eff_def
@@ -177,17 +222,16 @@ def calc_damage(atk_stat, def_stat, current_hp, dmg_rate=1.0, is_skill=False):
     hp_component = 12.0 * hp_scaling
 
     calculated_dmg = (hp_component + stat_component) * dmg_rate
-    final_dmg = max(floor_val, calculated_dmg)
+    
+    # 全体（計算値および床値）に兵種相性倍率を適用
+    final_dmg_base = calculated_dmg * troop_mult
+    final_dmg = max(floor_val, final_dmg_base)
 
     random_factor = random.uniform(0.96, 1.04)
     return int(final_dmg * random_factor)
 
 def apply_damage_to_officer(officer, raw_damage):
-    """
-    被ダメージの分配:
-    - 即死: 10.4% （兵力から恒久減算）
-    - 負傷: 89.6% （兵力から減算し、injured_hp に加算）
-    """
+    """被ダメージの分配 (即死10.4% / 負傷89.6%)"""
     if raw_damage <= 0 or officer["hp"] <= 0:
         return
 
@@ -200,14 +244,14 @@ def apply_damage_to_officer(officer, raw_damage):
     officer["total_dead"] += dead_now
 
 def process_turn_deadification(team):
-    """ターン境界における負傷兵の戦死化（約10.36%）"""
+    """ターン境界の戦死化処理 (約10.36%)"""
     for o in team:
         if o["injured_hp"] > 0:
             turn_dead = int(o["injured_hp"] * 0.1036)
             o["injured_hp"] -= turn_dead
             o["total_dead"] += turn_dead
 
-def simulate_turn_attack(attacker_team, defender_team, current_turn):
+def simulate_turn_attack(attacker_team, defender_team, troop_mult):
     logs = []
     
     alive_defenders = [o for o in defender_team if o["hp"] > 0]
@@ -224,14 +268,11 @@ def simulate_turn_attack(attacker_team, defender_team, current_turn):
         for sk in off["skills"]:
             if "回復" in sk["attr"] or "休養" in sk["attr"]:
                 if sk["rate"] > 0 and random.random() < sk["rate"]:
-                    # 参照データの選定 (休養型は開戦前データ、直接型は発動時データ)
                     ref_intel = off["init_chiryaku"] if "休養" in sk["attr"] else off["chiryaku"]
                     ref_hp = off["init_hp"] if "休養" in sk["attr"] else off["hp"]
                     is_intel = not ("非依存" in sk["attr"])
 
                     heal_cap = calc_heal_cap(sk["dmg"], ref_intel, ref_hp, is_intel_dep=is_intel)
-
-                    # 回復＝min(回復上限, 負傷兵)
                     actual_heal = int(min(heal_cap, off["injured_hp"]))
                     
                     if actual_heal > 0:
@@ -243,10 +284,9 @@ def simulate_turn_attack(attacker_team, defender_team, current_turn):
 
         # --- 2. 通常攻撃 ---
         avg_def = sum(o["tousotsu"] for o in alive_defenders) / len(alive_defenders)
-        normal_dmg = calc_damage(off["buyou"], avg_def, off["hp"], dmg_rate=1.0, is_skill=False)
+        normal_dmg = calc_damage(off["buyou"], avg_def, off["hp"], dmg_rate=1.0, is_skill=False, troop_mult=troop_mult)
         total_turn_dmg += normal_dmg
 
-        # 敵軍へダメージ適用（即死10.4% / 負傷89.6%）
         dmg_per_target = normal_dmg // len(alive_defenders)
         for target in alive_defenders:
             apply_damage_to_officer(target, dmg_per_target)
@@ -256,7 +296,7 @@ def simulate_turn_attack(attacker_team, defender_team, current_turn):
             if sk["rate"] > 0 and not ("回復" in sk["attr"] or "休養" in sk["attr"]) and sk["name"] != "（なし）":
                 if random.random() < sk["rate"]:
                     stat_val = off["chiryaku"] if sk["attr"] == "計略" else off["buyou"]
-                    s_dmg = calc_damage(stat_val, avg_def, off["hp"], dmg_rate=sk["dmg"], is_skill=True)
+                    s_dmg = calc_damage(stat_val, avg_def, off["hp"], dmg_rate=sk["dmg"], is_skill=True, troop_mult=troop_mult)
                     
                     total_turn_dmg += s_dmg
                     dmg_per_target_sk = s_dmg // len(alive_defenders)
@@ -281,7 +321,6 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
     end_enemy_dead_list = []
 
     for _ in range(sim_trials):
-        # 武将状態の初期化
         my_team_sim = [{
             **o,
             "hp": initial_hp_per_officer,
@@ -301,19 +340,18 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
         } for o in enemy_team]
 
         for turn in range(1, 9):
-            # 1. ターン境界の戦死化処理
             process_turn_deadification(my_team_sim)
             process_turn_deadification(enemy_team_sim)
 
-            # 2. 自軍攻撃
-            simulate_turn_attack(my_team_sim, enemy_team_sim, turn)
+            # 自軍攻撃（自軍→敵軍の相性適用）
+            simulate_turn_attack(my_team_sim, enemy_team_sim, my_advantage_mult)
             if sum(e["hp"] for e in enemy_team_sim) == 0: break
 
-            # 3. 敵軍攻撃
-            simulate_turn_attack(enemy_team_sim, my_team_sim, turn)
+            # 敵軍攻撃（敵軍→自軍の相性適用）
+            simulate_turn_attack(enemy_team_sim, my_team_sim, enemy_advantage_mult)
             if sum(m["hp"] for m in my_team_sim) == 0: break
 
-        # 終戦精算（引き分け時：残った負傷兵の42%が戦死化）
+        # 終戦精算（引き分け時: 残った負傷兵の42%が戦死）
         for o in my_team_sim:
             fin_dead = int(o["injured_hp"] * 0.42)
             o["total_dead"] += fin_dead
@@ -360,8 +398,8 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
         process_turn_deadification(my_team_sample)
         process_turn_deadification(enemy_team_sample)
 
-        my_dmg, my_sk_logs = simulate_turn_attack(my_team_sample, enemy_team_sample, turn)
-        enemy_dmg, enemy_sk_logs = simulate_turn_attack(enemy_team_sample, my_team_sample, turn)
+        my_dmg, my_sk_logs = simulate_turn_attack(my_team_sample, enemy_team_sample, my_advantage_mult)
+        enemy_dmg, enemy_sk_logs = simulate_turn_attack(enemy_team_sample, my_team_sample, enemy_advantage_mult)
 
         cur_my_hp = sum(m["hp"] for m in my_team_sample)
         cur_my_inj = sum(m["injured_hp"] for m in my_team_sample)
