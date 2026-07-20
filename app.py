@@ -187,12 +187,12 @@ for item in RAW_OFFICER_LIST:
         {"req": 3, "name": t_r3, "troop": parse_trait_troop_bonus(t_r3)[0] if parse_trait_troop_bonus(t_r3) else None},
         {"req": 5, "name": t_r5, "troop": parse_trait_troop_bonus(t_r5)[0] if parse_trait_troop_bonus(t_r5) else None},
     ]
-    OFFICER_DATABASE[name] = [buyou, chiryaku, tousotsu, speed, skill_name, db_s1_rate, db_s1_dmg, "能動", s_attr, base_aptitudes, traits]
+    OFFICER_DATABASE[name] = [buyou, chiryaku, tousotsu, speed, skill_name, db_s1_rate, db_s1_dmg, "能動", s_attr, base_aptitudes, traits, faction]
 
 OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 
 def get_officer_data(o_name):
-    return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 50, 100, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, []])
+    return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 50, 100, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, [], "群雄"])
 
 # --- UI構築ヘルパー ---
 def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
@@ -200,6 +200,13 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
     selected_troop = st.radio(
         f"{team_name}の兵種", TROOP_TYPES, index=default_troop_idx, horizontal=True, key=f"{team_prefix}_troop"
     )
+
+    st.markdown("##### 連携効果設定")
+    col_link1, col_link2 = st.columns(2)
+    with col_link1:
+        faction_bonus_lv = st.slider("連携(勢力) Lv (0-10)", 0, 10, 0, key=f"{team_prefix}_faction_lv")
+    with col_link2:
+        kamonn_bonus_lv = st.slider("連携(家門) Lv (0-3)", 0, 3, 0, key=f"{team_prefix}_kamonn_lv")
 
     roles = ["大将", "副将1", "副将2"]
     team_officers = []
@@ -216,9 +223,8 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
                 rank = st.selectbox("凸数", [0, 1, 2, 3, 4, 5], format_func=lambda x: "無 (★0)" if x==0 else f"★{x}", key=f"{team_prefix}_{idx}_rank")
 
             o_data = get_officer_data(o_name)
-            o_buyou, o_chiryaku, o_tousotsu, o_speed, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits = o_data
+            o_buyou, o_chiryaku, o_tousotsu, o_speed, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits, o_faction = o_data
 
-            # --- ステータス & ポイント振り分け（1凸につき+10PT、合計 max_pts = 50 + rank * 10） ---
             st.markdown("##### 属性 / ステータス")
             
             max_pts = 50 + (rank * 10)
@@ -231,7 +237,6 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
                 "速度": f"{team_prefix}_{idx}_alloc_speed",
             }
 
-            # セッションステートの初期化
             for k in alloc_keys.values():
                 if k not in st.session_state:
                     st.session_state[k] = 0
@@ -289,12 +294,13 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
 
             st.caption(f"残 **{st.session_state[pt_key]}** / {max_pts} PT (★{rank})")
 
-            # --- 特性（凸連動） ---
             st.markdown("---")
             st.markdown("##### 特性（凸連動）")
+            active_traits = []
             for t in traits:
                 if rank >= t["req"]:
                     st.markdown(f"✅ **{t['req']}凸**: {t['name']}")
+                    active_traits.append(t['name'])
                 else:
                     st.markdown(f"🔒 `{t['req']}凸で開放`: {t['name']}")
 
@@ -315,9 +321,9 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             ]
 
             team_officers.append({
-                "role": role, "name": o_name, "rank": rank,
-                "buyou": allocated_stats["武勇"], "chiryaku": allocated_stats["知略"], "tousotsu": allocated_stats["統率"],
-                "skills": skills
+                "role": role, "name": o_name, "faction": o_faction, "rank": rank,
+                "buyou": allocated_stats["武勇"], "chiryaku": allocated_stats["知略"], "tousotsu": allocated_stats["統率"], "speed": allocated_stats["速度"],
+                "skills": skills, "traits": active_traits
             })
 
             for t_type, val in troop_aptitudes.items():
@@ -325,7 +331,7 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
                     total_troop_levels[t_type] += val
 
     team_troop_level = total_troop_levels.get(selected_troop, 0)
-    return team_officers, selected_troop, team_troop_level
+    return team_officers, selected_troop, team_troop_level, faction_bonus_lv, kamonn_bonus_lv
 
 # --- サイドバー設定 ---
 st.sidebar.header("⚙️ 設定")
@@ -336,10 +342,10 @@ sim_trials = st.sidebar.selectbox("対戦試行回数", [1000, 5000, 10000], ind
 main_tab1, main_tab2 = st.tabs(["🔵 自軍（あなた）", "🔴 敵軍（対戦相手）"])
 
 with main_tab1:
-    my_team, my_troop, my_troop_lvl = input_team_data("my", "自軍編成", ["上杉謙信", "柿崎景家", "宇佐美定満"], 1)
+    my_team, my_troop, my_troop_lvl, my_faction_lv, my_kamonn_lv = input_team_data("my", "自軍編成", ["上杉謙信", "柿崎景家", "宇佐美定満"], 1)
 
 with main_tab2:
-    enemy_team, enemy_troop, enemy_troop_lvl = input_team_data("enemy", "敵軍編成", ["織田信長", "柴田勝家", "明智光秀"], 3)
+    enemy_team, enemy_troop, enemy_troop_lvl, enemy_faction_lv, enemy_kamonn_lv = input_team_data("enemy", "敵軍編成", ["織田信長", "柴田勝家", "明智光秀"], 3)
 
 base_my_adv = get_troop_advantage(my_troop, enemy_troop)
 base_enemy_adv = get_troop_advantage(enemy_troop, my_troop)
@@ -347,6 +353,49 @@ my_advantage_mult = base_my_adv * (1.0 + (my_troop_lvl * 0.02))
 enemy_advantage_mult = base_enemy_adv * (1.0 + (enemy_troop_lvl * 0.02))
 
 st.write("---")
+
+# --- ステータス計算ロジック（追加部分） ---
+def calculate_final_attributes(officer, troop_type, team_troop_lvl, faction_lv, kamonn_lv):
+    base_stats = {
+        "武勇": float(officer["buyou"]),
+        "統率": float(officer["tousotsu"]),
+        "知略": float(officer["chiryaku"]),
+        "速度": float(officer["speed"]),
+        "政務": 100.0,
+        "魅力": 100.0
+    }
+    
+    # 乗算要素：兵種レベルバフ（武勇・統率・知略・速度、1Lv毎+2%）＆ 連携施設（勢力最大Lv10で+7.0%、家門最大Lv3で+3.0%）
+    troop_mult_val = team_troop_lvl * 0.02
+    faction_mult = faction_lv * 0.007
+    kamonn_mult = kamonn_lv * 0.01
+    total_mult = 1.0 + troop_mult_val + faction_mult + kamonn_mult
+    
+    multiplied_stats = {}
+    for k, val in base_stats.items():
+        if k in ["政務", "魅力"]:
+            multiplied_stats[k] = val * (1.0 + faction_mult + kamonn_mult)
+        else:
+            multiplied_stats[k] = val * total_mult
+
+    # 加算要素：軍学・兵学などの適用（兵種ごとの補正）
+    if troop_type == "騎兵":
+        multiplied_stats["武勇"] += 10
+        multiplied_stats["知略"] += 10
+    elif troop_type == "弓兵":
+        multiplied_stats["速度"] += 15
+    elif troop_type == "足軽":
+        multiplied_stats["統率"] += 15
+    elif troop_type == "鉄砲":
+        multiplied_stats["武勇"] += 10
+        multiplied_stats["知略"] += 10
+
+    # 特性や戦法による追加パーセンテージ（「人は城」など、積み上げ後の数値から5%上昇）
+    for t_name in officer["traits"]:
+        if "人は城" in t_name:
+            multiplied_stats["統率"] *= 1.05
+
+    return multiplied_stats
 
 # シミュレーション計算ロジック
 def get_h_hp(hp):
@@ -399,23 +448,25 @@ def simulate_turn_attack(attacker_team, defender_team, troop_mult):
     total_turn_dmg = 0
     for off in attacker_team:
         if off["hp"] <= 0: continue
+        final_attrs = off["calculated_attrs"]
+        
         for sk in off["skills"]:
             if "回復" in sk["attr"] or "休養" in sk["attr"]:
                 if sk["rate"] > 0 and random.random() < sk["rate"]:
-                    ref_intel = off["chiryaku"]
+                    ref_intel = final_attrs["知略"]
                     heal_cap = calc_heal_cap(sk["dmg"], ref_intel, off["hp"], True)
                     actual_heal = int(min(heal_cap, off["injured_hp"]))
                     if actual_heal > 0:
                         off["hp"] += actual_heal
                         off["injured_hp"] -= actual_heal
-        avg_def = sum(o["tousotsu"] for o in alive_defenders) / len(alive_defenders)
-        normal_dmg = calc_damage(off["buyou"], avg_def, off["hp"], 1.0, False, troop_mult)
+        avg_def = sum(o["calculated_attrs"]["統率"] for o in alive_defenders) / len(alive_defenders)
+        normal_dmg = calc_damage(final_attrs["武勇"], avg_def, off["hp"], 1.0, False, troop_mult)
         total_turn_dmg += normal_dmg
         for target in alive_defenders: apply_damage_to_officer(target, normal_dmg // len(alive_defenders))
         for sk in off["skills"]:
             if sk["rate"] > 0 and "回復" not in sk["attr"] and "休養" not in sk["attr"] and sk["name"] != "（なし）":
                 if random.random() < sk["rate"]:
-                    stat_val = off["chiryaku"] if sk["attr"] == "計略" else off["buyou"]
+                    stat_val = final_attrs["知略"] if sk["attr"] == "計略" else final_attrs["武勇"]
                     s_dmg = calc_damage(stat_val, avg_def, off["hp"], sk["dmg"], True, troop_mult)
                     total_turn_dmg += s_dmg
                     for target in alive_defenders: apply_damage_to_officer(target, s_dmg // len(alive_defenders))
@@ -427,8 +478,15 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
     end_my_dead_list, end_enemy_dead_list = [], []
 
     for _ in range(sim_trials):
-        my_team_sim = [{**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0} for o in my_team]
-        enemy_team_sim = [{**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0} for o in enemy_team]
+        my_team_sim = []
+        for o in my_team:
+            calc_attrs = calculate_final_attributes(o, my_troop, my_troop_lvl, my_faction_lv, my_kamonn_lv)
+            my_team_sim.append({**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0, "calculated_attrs": calc_attrs})
+
+        enemy_team_sim = []
+        for o in enemy_team:
+            calc_attrs = calculate_final_attributes(o, enemy_troop, enemy_troop_lvl, enemy_faction_lv, enemy_kamonn_lv)
+            enemy_team_sim.append({**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0, "calculated_attrs": calc_attrs})
 
         for turn in range(1, 9):
             process_turn_deadification(my_team_sim)
