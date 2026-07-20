@@ -205,7 +205,7 @@ sim_trials = st.sidebar.selectbox(
     "対戦試行回数", [1000, 5000, 10000], index=0
 )
 
-# 武将選択UI（UI要素は選択ボックスのみでステータス表示非表示）
+# 武将選択UI（固有戦法名を表示）
 def input_team_data(team_prefix, team_name, default_choices):
     st.markdown(f"### {team_name}")
     roles = ["主将", "副将1", "副将2"]
@@ -218,6 +218,9 @@ def input_team_data(team_prefix, team_name, default_choices):
             o_name = st.selectbox("武将を選択", OFFICER_LIST, index=default_idx, key=f"{team_prefix}_{idx}_select")
             
             o_buyou, o_chiryaku, o_tousotsu, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_prep, db_s1_type, db_s1_attr = OFFICER_DATABASE[o_name]
+
+            # 固有戦法名の表示を残す
+            st.caption(f"・固有戦法: **【{db_s1_name}】**")
 
             s2_default_idx = SKILL_LIST.index("離心の計") if "離心の計" in SKILL_LIST else 0
             s3_default_idx = SKILL_LIST.index("所向無敵") if "所向無敵" in SKILL_LIST else 0
