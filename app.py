@@ -194,7 +194,7 @@ OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 def get_officer_data(o_name):
     return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 50, 100, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, []])
 
-# --- UI構築ヘルパー（st.dataframeを使用して安全にテーブル表示） ---
+# --- UI構築ヘルパー ---
 def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
     st.markdown(f"### {team_name}")
     selected_troop = st.radio(
@@ -218,23 +218,34 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             o_data = get_officer_data(o_name)
             o_buyou, o_chiryaku, o_tousotsu, o_speed, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits = o_data
 
-            # --- ステータス & ポイント振り分け ---
+            # --- ステータス & ポイント振り分け（1凸につき+10PT、合計 max_pts = 50 + rank * 10） ---
             st.markdown("##### 属性 / ステータス")
             
+            max_pts = 50 + (rank * 10)
             pt_key = f"{team_prefix}_{idx}_remaining_pts"
+            rank_cache_key = f"{team_prefix}_{idx}_last_rank"
             alloc_keys = {
                 "武勇": f"{team_prefix}_{idx}_alloc_buyou",
                 "統率": f"{team_prefix}_{idx}_alloc_tousotsu",
                 "知略": f"{team_prefix}_{idx}_alloc_chiryaku",
                 "速度": f"{team_prefix}_{idx}_alloc_speed",
             }
-            if pt_key not in st.session_state:
-                st.session_state[pt_key] = 50
-                for k in alloc_keys.values():
-                    st.session_state[k] = 0
+
+            # 初期化または凸数が変更されたときのポイント再計算
+            if pt_key not in st.session_state or st.session_state.get(rank_cache_key) != rank:
+                st.session_state[rank_cache_key] = rank
+                # 現在の割り振りの合計を計算
+                current_allocated_sum = sum(st.session_state.get(k, 0) for k in alloc_keys.values())
+                if current_allocated_sum > max_pts:
+                    # 超過している場合はリセット
+                    for k in alloc_keys.values():
+                        st.session_state[k] = 0
+                    st.session_state[pt_key] = max_pts
+                else:
+                    st.session_state[pt_key] = max_pts - current_allocated_sum
 
             if st.button("全リセット", key=f"{team_prefix}_{idx}_reset"):
-                st.session_state[pt_key] = 50
+                st.session_state[pt_key] = max_pts
                 for k in alloc_keys.values():
                     st.session_state[k] = 0
                 st.rerun()
@@ -261,7 +272,6 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             if needs_rerun:
                 st.rerun()
 
-            # st.dataframeを使って安全・確実に表として表示
             df_data = []
             for stat_name, base_val in base_stats.items():
                 alloc_val = st.session_state[alloc_keys[stat_name]]
@@ -275,7 +285,7 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             df_status = pd.DataFrame(df_data)
             st.dataframe(df_status, use_container_width=True, hide_index=True)
 
-            st.caption(f"残 **{st.session_state[pt_key]}** / 50 PT")
+            st.caption(f"残 **{st.session_state[pt_key]}** / {max_pts} PT (★{rank})")
 
             # --- 特性（凸連動） ---
             st.markdown("---")
@@ -287,7 +297,6 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
                     st.markdown(f"🔒 `{t['req']}凸で開放`: {t['name']}")
 
             st.markdown("---")
-            # 伝授・事件戦法
             col_s1, col_s2 = st.columns(2)
             with col_s1:
                 s2_name = st.selectbox("伝授/事件1", SKILL_LIST, index=SKILL_LIST.index("有備無患") if "有備無患" in SKILL_LIST else 0, key=f"{team_prefix}_{idx}_s2")
