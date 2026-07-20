@@ -201,13 +201,6 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
         f"{team_name}の兵種", TROOP_TYPES, index=default_troop_idx, horizontal=True, key=f"{team_prefix}_troop"
     )
 
-    st.markdown("##### 連携効果設定")
-    col_link1, col_link2 = st.columns(2)
-    with col_link1:
-        faction_bonus_lv = st.slider("連携(勢力) Lv (0-10)", 0, 10, 0, key=f"{team_prefix}_faction_lv")
-    with col_link2:
-        kamonn_bonus_lv = st.slider("連携(家門) Lv (0-3)", 0, 3, 0, key=f"{team_prefix}_kamonn_lv")
-
     roles = ["大将", "副将1", "副将2"]
     team_officers = []
     total_troop_levels = {t: 0 for t in TROOP_TYPES}
@@ -331,6 +324,16 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
                     total_troop_levels[t_type] += val
 
     team_troop_level = total_troop_levels.get(selected_troop, 0)
+    
+    st.markdown("##### 連携効果設定")
+    col_link1, col_link2 = st.columns(2)
+    with col_link1:
+        faction_bonus_lv = st.slider("連携(勢力) Lv (0-10)", 0, 10, 0, key=f"{team_prefix}_faction_lv")
+    with col_link2:
+        kamonn_bonus_lv = st.slider("連携(家門) Lv (0-3)", 0, 3, 0, key=f"{team_prefix}_kamonn_lv")
+
+    st.info(f"📊 **{team_name} 合計兵種レベル ({selected_troop})**: **{team_troop_level}** (各武将の適性合計)")
+
     return team_officers, selected_troop, team_troop_level, faction_bonus_lv, kamonn_bonus_lv
 
 # --- サイドバー設定 ---
@@ -354,7 +357,7 @@ enemy_advantage_mult = base_enemy_adv * (1.0 + (enemy_troop_lvl * 0.02))
 
 st.write("---")
 
-# --- ステータス計算ロジック（追加部分） ---
+# --- ステータス計算ロジック ---
 def calculate_final_attributes(officer, troop_type, team_troop_lvl, faction_lv, kamonn_lv):
     base_stats = {
         "武勇": float(officer["buyou"]),
@@ -365,7 +368,6 @@ def calculate_final_attributes(officer, troop_type, team_troop_lvl, faction_lv, 
         "魅力": 100.0
     }
     
-    # 乗算要素：兵種レベルバフ（武勇・統率・知略・速度、1Lv毎+2%）＆ 連携施設（勢力最大Lv10で+7.0%、家門最大Lv3で+3.0%）
     troop_mult_val = team_troop_lvl * 0.02
     faction_mult = faction_lv * 0.007
     kamonn_mult = kamonn_lv * 0.01
@@ -378,7 +380,6 @@ def calculate_final_attributes(officer, troop_type, team_troop_lvl, faction_lv, 
         else:
             multiplied_stats[k] = val * total_mult
 
-    # 加算要素：軍学・兵学などの適用（兵種ごとの補正）
     if troop_type == "騎兵":
         multiplied_stats["武勇"] += 10
         multiplied_stats["知略"] += 10
@@ -390,7 +391,6 @@ def calculate_final_attributes(officer, troop_type, team_troop_lvl, faction_lv, 
         multiplied_stats["武勇"] += 10
         multiplied_stats["知略"] += 10
 
-    # 特性や戦法による追加パーセンテージ（「人は城」など、積み上げ後の数値から5%上昇）
     for t_name in officer["traits"]:
         if "人は城" in t_name:
             multiplied_stats["統率"] *= 1.05
