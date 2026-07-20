@@ -194,7 +194,7 @@ OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 def get_officer_data(o_name):
     return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 50, 100, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, []])
 
-# --- UI構築ヘルパー（1行で確実に並ぶステータス表） ---
+# --- UI構築ヘルパー（HTMLテーブルで強制的に1行横並び固定） ---
 def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
     st.markdown(f"### {team_name}")
     selected_troop = st.radio(
@@ -218,7 +218,7 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             o_data = get_officer_data(o_name)
             o_buyou, o_chiryaku, o_tousotsu, o_speed, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits = o_data
 
-            # --- ステータス & ポイント振り分け（1つのグリッド行で完璧に整列） ---
+            # --- ステータス & ポイント振り分け（HTMLテーブルで完全固定レイアウト） ---
             st.markdown("##### 属性 / ステータス")
             
             pt_key = f"{team_prefix}_{idx}_remaining_pts"
@@ -243,39 +243,48 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             allocated_stats = {}
             current_remaining = st.session_state[pt_key]
 
-            # ヘッダー行
-            cols = st.columns([1.2, 1, 2.2, 1])
-            cols[0].markdown("**属性**")
-            cols[1].markdown("**素**")
-            cols[2].markdown("**振分**")
-            cols[3].markdown("**合計**")
-
-            # 各ステータス行を1つのカラムセットで完全に同期出力
+            # 状態更新チェック用
+            needs_rerun = False
             for stat_name, base_val in base_stats.items():
-                r_cols = st.columns([1.2, 1, 2.2, 1])
-                
-                with r_cols[0]:
-                    st.markdown(f"**{stat_name}**")
-                with r_cols[1]:
-                    st.markdown(str(base_val))
-                with r_cols[2]:
-                    alloc_val = st.number_input(
-                        f"{stat_name} 振分", min_value=0, max_value=base_val + current_remaining,
-                        value=st.session_state[alloc_keys[stat_name]], step=1,
-                        key=f"{team_prefix}_{idx}_input_{stat_name}", label_visibility="collapsed"
-                    )
-                with r_cols[3]:
-                    total_val = base_val + alloc_val
-                    st.markdown(f"**{total_val}**")
-
-                diff = alloc_val - st.session_state[alloc_keys[stat_name]]
+                input_val = st.number_input(
+                    f"{stat_name} 振分", min_value=0, max_value=base_val + current_remaining,
+                    value=st.session_state[alloc_keys[stat_name]], step=1,
+                    key=f"{team_prefix}_{idx}_input_{stat_name}"
+                )
+                diff = input_val - st.session_state[alloc_keys[stat_name]]
                 if diff != 0:
                     if current_remaining - diff >= 0:
-                        st.session_state[alloc_keys[stat_name]] = alloc_val
+                        st.session_state[alloc_keys[stat_name]] = input_val
                         st.session_state[pt_key] -= diff
-                        st.rerun()
-                
-                allocated_stats[stat_name] = total_val
+                        needs_rerun = True
+                allocated_stats[stat_name] = base_val + st.session_state[alloc_keys[stat_name]]
+
+            if needs_rerun:
+                st.rerun()
+
+            # HTMLテーブルで「属性名 | 素 | 振分値 | 合計」を絶対に1行で並べる
+            table_html = f"""
+            <table style="width:100%; text-align:center; border-collapse:collapse; margin-top:10px; margin-bottom:10px;">
+                <tr style="border-bottom: 1px solid #444; color: #888; font-size: 0.85em;">
+                    <th style="text-align:left; padding:4px;">属性</th>
+                    <th style="padding:4px;">素</th>
+                    <th style="padding:4px;">振分</th>
+                    <th style="padding:4px;">合計</th>
+                </tr>
+            """
+            for stat_name, base_val in base_stats.items():
+                alloc_val = st.session_state[alloc_keys[stat_name]]
+                total_val = base_val + alloc_val
+                table_html += f"""
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="text-align:left; padding:6px; font-weight:bold;">{stat_name}</td>
+                    <td style="padding:6px; color:#bbb;">{base_val}</td>
+                    <td style="padding:6px; color:#4da6ff;">+{alloc_val}</td>
+                    <td style="padding:6px; font-weight:bold; color:#fff;">{total_val}</td>
+                </tr>
+                """
+            table_html += "</table>"
+            st.markdown(table_html, unsafe_allow_html=True)
 
             st.caption(f"残 **{st.session_state[pt_key]}** / 50 PT")
 
