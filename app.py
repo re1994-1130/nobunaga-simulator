@@ -194,7 +194,7 @@ OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 def get_officer_data(o_name):
     return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 50, 100, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, []])
 
-# --- UI構築ヘルパー（Streamlitの標準カラムによる安全な横並びレイアウト） ---
+# --- UI構築ヘルパー（1行で確実に並ぶステータス表） ---
 def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
     st.markdown(f"### {team_name}")
     selected_troop = st.radio(
@@ -218,7 +218,7 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             o_data = get_officer_data(o_name)
             o_buyou, o_chiryaku, o_tousotsu, o_speed, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits = o_data
 
-            # --- ステータス & ポイント振り分け（ネイティブカラムによる安全な整列） ---
+            # --- ステータス & ポイント振り分け（1つのグリッド行で完璧に整列） ---
             st.markdown("##### 属性 / ステータス")
             
             pt_key = f"{team_prefix}_{idx}_remaining_pts"
@@ -244,26 +244,27 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             current_remaining = st.session_state[pt_key]
 
             # ヘッダー行
-            h_col1, h_col2, h_col3, h_col4 = st.columns([1.2, 1, 1.8, 1])
-            h_col1.markdown("**属性**")
-            h_col2.markdown("**素**")
-            h_col3.markdown("**振分**")
-            h_col4.markdown("**合計**")
+            cols = st.columns([1.2, 1, 2.2, 1])
+            cols[0].markdown("**属性**")
+            cols[1].markdown("**素**")
+            cols[2].markdown("**振分**")
+            cols[3].markdown("**合計**")
 
-            # 各ステータス行をカラムで整列
+            # 各ステータス行を1つのカラムセットで完全に同期出力
             for stat_name, base_val in base_stats.items():
-                r_col1, r_col2, r_col3, r_col4 = st.columns([1.2, 1, 1.8, 1])
-                with r_col1:
+                r_cols = st.columns([1.2, 1, 2.2, 1])
+                
+                with r_cols[0]:
                     st.markdown(f"**{stat_name}**")
-                with r_col2:
+                with r_cols[1]:
                     st.markdown(str(base_val))
-                with r_col3:
+                with r_cols[2]:
                     alloc_val = st.number_input(
                         f"{stat_name} 振分", min_value=0, max_value=base_val + current_remaining,
                         value=st.session_state[alloc_keys[stat_name]], step=1,
                         key=f"{team_prefix}_{idx}_input_{stat_name}", label_visibility="collapsed"
                     )
-                with r_col4:
+                with r_cols[3]:
                     total_val = base_val + alloc_val
                     st.markdown(f"**{total_val}**")
 
