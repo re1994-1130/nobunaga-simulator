@@ -7,10 +7,9 @@ st.set_page_config(
 )
 
 st.title("⚔️ 部隊対戦シミュレータ")
-st.caption("自軍 vs 敵軍 8ターン対戦（兵種相性・最低保証床補正・負傷兵完全実装版）")
+st.caption("自軍 vs 敵軍 8ターン対戦（兵種適性・凸特性・兵種相性・最低保証床補正・負傷兵完全実装版）")
 
 # --- 兵種相性の関係定義 ---
-# 相性環: 足軽 -> 騎兵 -> 弓兵 -> 鉄砲 -> 足軽
 TROOP_TYPES = ["足軽", "騎兵", "弓兵", "鉄砲"]
 
 def get_troop_advantage(attacker_type, defender_type):
@@ -18,7 +17,6 @@ def get_troop_advantage(attacker_type, defender_type):
     兵種相性による倍率判定
     - 有利: 1.125 (+12.5%)
     - 不利: 0.875 (-12.5%)
-    - 相対差: 約1.29倍
     """
     adv_map = {
         "足軽": "騎兵",
@@ -66,29 +64,108 @@ SKILL_DATABASE = {
 }
 SKILL_LIST = sorted(list(SKILL_DATABASE.keys()))
 
-# --- 全武将統合データベース ---
+# --- 武将統合データベース（基礎ステータス・兵種適性・凸特性拡張版） ---
+# 形式: [武勇, 知略, 統率, 固有名, 確率, 発動ダメ, タイプ, 属性, 兵種適性Dict, 特性リスト]
+# 特性リスト形式: [{"req": 必要凸数, "name": 特性名, "troop": 兵種, "bonus": 適正加算値}]
 OFFICER_DATABASE = {
-    # 織田・関連
-    "柴田勝家": [208, 95, 162, "かかれ柴田", 50, 154, "能動", "兵刃"],
-    "明智光秀": [140, 183, 165, "時は今", 70, 56, "能動", "計略"],
-    "お市": [64, 128, 98, "夢幻泡影", 50, 82, "能動", "回復"],
-    "帰蝶": [99, 161, 120, "帰蝶の舞", 100, 0, "受動", "計略"],
-    "佐久間信盛": [120, 140, 173, "陣前無我", 55, 0, "能動", "兵刃"],
-    "前田慶次": [206, 127, 150, "天下御免", 65, 188, "突撃", "兵刃"],
-    "織田信長": [180, 231, 195, "新生", 100, 0, "指揮", "計略"],
-
-    # 豊臣・徳川・武田・他
-    "黒田官兵衛": [113, 210, 167, "水の如し", 100, 88, "受動", "計略"],
-    "豊臣秀吉": [111, 180, 170, "千成瓢箪", 100, 0, "指揮", "計略"],
-    "本多忠勝": [229, 110, 190, "古今独歩", 100, 70, "受動", "兵刃"],
-    "本多正信": [43, 195, 120, "非常の器", 100, 66, "指揮", "休養"],
-    "徳川家康": [155, 231, 210, "三河魂", 100, 0, "指揮", "計略"],
-    "武田信玄": [191, 202, 205, "風林火山", 100, 124, "指揮", "計略"],
-    "山県昌景": [224, 120, 169, "武田之赤備", 100, 138, "受動", "兵刃"],
-    "上杉謙信": [247, 186, 210, "軍神", 100, 160, "受動", "兵刃"],
-    "今川義元": [174, 194, 180, "海道一", 70, 134, "突撃", "計略"],
-    "朝倉義景": [53, 110, 90, "落花啼鳥", 35, 0, "能動", "計略"],
+    "柴田勝家": [
+        208, 95, 162, "かかれ柴田", 50, 154, "能動", "兵刃",
+        {"足軽": 2, "騎兵": 3, "弓兵": 1, "鉄砲": 1},
+        [
+            {"req": 0, "name": "騎兵大将", "troop": "騎兵", "bonus": 1},
+            {"req": 1, "name": "突破", "troop": "騎兵", "bonus": 1},
+            {"req": 3, "name": "猛将", "troop": None, "bonus": 0},
+            {"req": 5, "name": "鬼柴田", "troop": "騎兵", "bonus": 1}
+        ]
+    ],
+    "明智光秀": [
+        140, 183, 165, "時は今", 70, 56, "能動", "計略",
+        {"足軽": 1, "騎兵": 1, "弓兵": 2, "鉄砲": 3},
+        [
+            {"req": 0, "name": "鉄砲大将", "troop": "鉄砲", "bonus": 1},
+            {"req": 1, "name": "狙撃", "troop": "鉄砲", "bonus": 1},
+            {"req": 3, "name": "策士", "troop": None, "bonus": 0},
+            {"req": 5, "name": "金ヶ崎の執念", "troop": "鉄砲", "bonus": 1}
+        ]
+    ],
+    "本多正信": [
+        43, 195, 120, "非常の器", 100, 66, "指揮", "休養",
+        {"足軽": 2, "騎兵": 1, "弓兵": 3, "鉄砲": 2},
+        [
+            {"req": 0, "name": "弓兵大将", "troop": "弓兵", "bonus": 1},
+            {"req": 1, "name": "参謀", "troop": "弓兵", "bonus": 1},
+            {"req": 3, "name": "謀略", "troop": None, "bonus": 0},
+            {"req": 5, "name": "権謀術数", "troop": "弓兵", "bonus": 1}
+        ]
+    ],
+    "上杉謙信": [
+        247, 186, 210, "軍神", 100, 160, "受動", "兵刃",
+        {"足軽": 3, "騎兵": 3, "弓兵": 1, "鉄砲": 1},
+        [
+            {"req": 0, "name": "騎兵大将", "troop": "騎兵", "bonus": 1},
+            {"req": 1, "name": "毘沙門天", "troop": "騎兵", "bonus": 1},
+            {"req": 3, "name": "車懸かり", "troop": "足軽", "bonus": 1},
+            {"req": 5, "name": "越後の龍", "troop": "騎兵", "bonus": 1}
+        ]
+    ],
+    "徳川家康": [
+        155, 231, 210, "三河魂", 100, 0, "指揮", "計略",
+        {"足軽": 3, "騎兵": 2, "弓兵": 2, "鉄砲": 2},
+        [
+            {"req": 0, "name": "足軽大将", "troop": "足軽", "bonus": 1},
+            {"req": 1, "name": "忍耐", "troop": "足軽", "bonus": 1},
+            {"req": 3, "name": "統帥", "troop": None, "bonus": 0},
+            {"req": 5, "name": "神君", "troop": "足軽", "bonus": 1}
+        ]
+    ],
+    "武田信玄": [
+        191, 202, 205, "風林火山", 100, 124, "指揮", "計略",
+        {"足軽": 2, "騎兵": 3, "弓兵": 2, "鉄砲": 1},
+        [
+            {"req": 0, "name": "騎兵大将", "troop": "騎兵", "bonus": 1},
+            {"req": 1, "name": "侵略如火", "troop": "騎兵", "bonus": 1},
+            {"req": 3, "name": "不動如山", "troop": "足軽", "bonus": 1},
+            {"req": 5, "name": "甲斐の虎", "troop": "騎兵", "bonus": 1}
+        ]
+    ],
+    "今川義元": [
+        174, 194, 180, "海道一", 70, 134, "突撃", "計略",
+        {"足軽": 1, "騎兵": 1, "弓兵": 3, "鉄砲": 2},
+        [
+            {"req": 0, "name": "弓兵大将", "troop": "弓兵", "bonus": 1},
+            {"req": 1, "name": "射術", "troop": "弓兵", "bonus": 1},
+            {"req": 3, "name": "威風", "troop": None, "bonus": 0},
+            {"req": 5, "name": "海道一の弓取り", "troop": "弓兵", "bonus": 1}
+        ]
+    ],
+    "織田信長": [
+        180, 231, 195, "新生", 100, 0, "指揮", "計略",
+        {"足軽": 2, "騎兵": 2, "弓兵": 1, "鉄砲": 3},
+        [
+            {"req": 0, "name": "鉄砲大将", "troop": "鉄砲", "bonus": 1},
+            {"req": 1, "name": "三段構え", "troop": "鉄砲", "bonus": 1},
+            {"req": 3, "name": "覇王", "troop": None, "bonus": 0},
+            {"req": 5, "name": "天下布武", "troop": "鉄砲", "bonus": 1}
+        ]
+    ]
 }
+
+# データベースにない武将のデフォルトフォールバック用関数
+def get_officer_data(o_name):
+    if o_name in OFFICER_DATABASE:
+        return OFFICER_DATABASE[o_name]
+    else:
+        return [
+            100, 100, 100, "汎用武将", 50, 100, "能動", "兵刃",
+            {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1},
+            [
+                {"req": 0, "name": "汎用初期", "troop": "足軽", "bonus": 1},
+                {"req": 1, "name": "汎用1凸", "troop": "騎兵", "bonus": 1},
+                {"req": 3, "name": "汎用3凸", "troop": "弓兵", "bonus": 1},
+                {"req": 5, "name": "汎用5凸", "troop": "鉄砲", "bonus": 1}
+            ]
+        ]
+
 OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 
 # --- UI・設定 ---
@@ -103,21 +180,58 @@ sim_trials = st.sidebar.selectbox(
 def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
     st.markdown(f"### {team_name}")
     
-    # 兵種選択
     selected_troop = st.selectbox(
-        f"{team_name}の兵種を選択", TROOP_TYPES, index=default_troop_idx, key=f"{team_prefix}_troop"
+        f"{team_name}の選択兵種", TROOP_TYPES, index=default_troop_idx, key=f"{team_prefix}_troop"
     )
 
     roles = ["主将", "副将1", "副将2"]
     tabs = st.tabs([f"【{r}】" for r in roles])
     team_officers = []
 
+    # 兵種適性および凸特性による合計適性レベル集計用
+    total_troop_levels = {t: 0 for t in TROOP_TYPES}
+
     for idx, tab in enumerate(tabs):
         with tab:
             default_idx = OFFICER_LIST.index(default_choices[idx]) if default_choices[idx] in OFFICER_LIST else 0
             o_name = st.selectbox("武将を選択", OFFICER_LIST, index=default_idx, key=f"{team_prefix}_{idx}_select")
             
-            o_buyou, o_chiryaku, o_tousotsu, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr = OFFICER_DATABASE[o_name]
+            o_data = get_officer_data(o_name)
+            o_buyou, o_chiryaku, o_tousotsu, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits = o_data
+
+            # --- ランクアップ（凸数）選択 ---
+            rank = st.radio(
+                "ランクアップ（凸数）",
+                [0, 1, 2, 3, 4, 5],
+                format_func=lambda x: "無 (★0)" if x == 0 else f"★{x}",
+                horizontal=True,
+                key=f"{team_prefix}_{idx}_rank"
+            )
+
+            # 凸に応じた特性の解放状態判定
+            active_traits = []
+            for trait in traits:
+                is_unlocked = rank >= trait["req"]
+                active_traits.append({**trait, "unlocked": is_unlocked})
+                
+                # 兵種適性加算
+                if is_unlocked and trait["troop"] in total_troop_levels:
+                    total_troop_levels[trait["troop"]] += trait["bonus"]
+
+            # 武将本体の基礎兵種適性も加算
+            for t_type, val in troop_aptitudes.items():
+                if t_type in total_troop_levels:
+                    total_troop_levels[t_type] += val
+
+            # --- UI表示：特性（凸連動）の表示 ---
+            st.caption("📜 **特性（凸連動）**")
+            trait_cols = st.columns(len(traits))
+            for t_idx, trait in enumerate(active_traits):
+                with trait_cols[t_idx]:
+                    if trait["unlocked"]:
+                        st.success(f"**[{trait['req']}凸]** {trait['name']}")
+                    else:
+                        st.info(f"🔒 **[{trait['req']}凸]** 封印中")
 
             st.caption(f"・固有戦法: **【{db_s1_name}】**")
 
@@ -139,44 +253,60 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             team_officers.append({
                 "role": roles[idx],
                 "name": o_name,
+                "rank": rank,
                 "buyou": o_buyou,
                 "chiryaku": o_chiryaku,
                 "tousotsu": o_tousotsu,
                 "skills": skills
             })
-    return team_officers, selected_troop
+
+    # 部隊の選択兵種における合計兵種レベル
+    team_troop_level = total_troop_levels.get(selected_troop, 0)
+
+    # --- 部隊兵種レベル表示領域 ---
+    st.markdown("#### 🛡️ 部隊合計兵種適性レベル")
+    lvl_cols = st.columns(len(TROOP_TYPES))
+    for idx, t_type in enumerate(TROOP_TYPES):
+        with lvl_cols[idx]:
+            is_active = (t_type == selected_troop)
+            label = f"**{t_type}**" if is_active else t_type
+            st.metric(label, f"Lv.{total_troop_levels[t_type]}", delta="出陣兵種" if is_active else None)
+
+    return team_officers, selected_troop, team_troop_level
 
 main_tab1, main_tab2 = st.tabs(["🔵 自軍（あなた）", "🔴 敵軍（対戦相手）"])
 
 with main_tab1:
-    my_team, my_troop = input_team_data("my", "自軍編成", ["本多正信", "上杉謙信", "柴田勝家"], default_troop_idx=1) # 騎兵
+    my_team, my_troop, my_troop_lvl = input_team_data("my", "自軍編成", ["本多正信", "上杉謙信", "柴田勝家"], default_troop_idx=1) # 騎兵
 
 with main_tab2:
-    enemy_team, enemy_troop = input_team_data("enemy", "敵軍編成", ["徳川家康", "武田信玄", "今川義元"], default_troop_idx=2) # 弓兵
+    enemy_team, enemy_troop, enemy_troop_lvl = input_team_data("enemy", "敵軍編成", ["徳川家康", "武田信玄", "今川義元"], default_troop_idx=2) # 弓兵
 
-# 相性倍率の計算表示
-my_advantage_mult = get_troop_advantage(my_troop, enemy_troop)
-enemy_advantage_mult = get_troop_advantage(enemy_troop, my_troop)
+# 相性倍率 & 兵種レベル補正の計算
+base_my_adv = get_troop_advantage(my_troop, enemy_troop)
+base_enemy_adv = get_troop_advantage(enemy_troop, my_troop)
+
+# 兵種レベル1ごとに +2% のダメージ補正を追加
+my_advantage_mult = base_my_adv * (1.0 + (my_troop_lvl * 0.02))
+enemy_advantage_mult = base_enemy_adv * (1.0 + (enemy_troop_lvl * 0.02))
 
 col_adv1, col_adv2 = st.columns(2)
 with col_adv1:
-    st.info(f"🔵 **自軍({my_troop}) → 敵軍({enemy_troop})**: 相性倍率 **{my_advantage_mult}倍**")
+    st.info(f"🔵 **自軍({my_troop} Lv.{my_troop_lvl}) → 敵軍**: 総合与ダメ倍率 **{my_advantage_mult:.3f}倍**")
 with col_adv2:
-    st.info(f"🔴 **敵軍({enemy_troop}) → 自軍({my_troop})**: 相性倍率 **{enemy_advantage_mult}倍**")
+    st.info(f"🔴 **敵軍({enemy_troop} Lv.{enemy_troop_lvl}) → 自軍**: 総合与ダメ倍率 **{enemy_advantage_mult:.3f}倍**")
 
 st.write("---")
 
-# ──────────── 実測に基づくダメージ・兵種相性・回復モデル ────────────
+# ──────────── 計算・ダメージ・回復モデル ────────────
 
 def get_h_hp(hp):
-    """兵力カーブ H(兵力)"""
     if hp <= 1800:
         return hp * 0.10
     else:
         return (1800 * 0.10) + ((hp - 1800) ** 0.85) * 0.15
 
 def calc_heal_cap(skill_rate, chiryaku, current_hp, is_intel_dep=True):
-    """回復上限計算"""
     h_val = get_h_hp(current_hp)
     if is_intel_dep:
         base_val = (1.02 * chiryaku) + h_val
@@ -185,10 +315,6 @@ def calc_heal_cap(skill_rate, chiryaku, current_hp, is_intel_dep=True):
     return skill_rate * base_val
 
 def get_floor_damage(current_hp, is_skill=False, dmg_rate=1.0, troop_mult=1.0):
-    """
-    最低保証（床）計算:
-    実測により、兵種相性倍率（troop_mult）は床自体にも掛け合わされることが判明。
-    """
     if current_hp <= 600:
         base_floor = 11.0
     elif current_hp <= 3000:
@@ -201,14 +327,9 @@ def get_floor_damage(current_hp, is_skill=False, dmg_rate=1.0, troop_mult=1.0):
     else:
         raw_floor = base_floor
 
-    # 兵種相性を床値に直乗算
     return raw_floor * troop_mult
 
 def calc_damage(atk_stat, def_stat, current_hp, dmg_rate=1.0, is_skill=False, troop_mult=1.0):
-    """
-    ダメージ計算:
-    与ダメージ全体に兵種相性倍率（1.125 / 0.875）を乗算する。
-    """
     if dmg_rate == 0:
         return 0
 
@@ -222,8 +343,6 @@ def calc_damage(atk_stat, def_stat, current_hp, dmg_rate=1.0, is_skill=False, tr
     hp_component = 12.0 * hp_scaling
 
     calculated_dmg = (hp_component + stat_component) * dmg_rate
-    
-    # 全体（計算値および床値）に兵種相性倍率を適用
     final_dmg_base = calculated_dmg * troop_mult
     final_dmg = max(floor_val, final_dmg_base)
 
@@ -231,7 +350,6 @@ def calc_damage(atk_stat, def_stat, current_hp, dmg_rate=1.0, is_skill=False, tr
     return int(final_dmg * random_factor)
 
 def apply_damage_to_officer(officer, raw_damage):
-    """被ダメージの分配 (即死10.4% / 負傷89.6%)"""
     if raw_damage <= 0 or officer["hp"] <= 0:
         return
 
@@ -244,7 +362,6 @@ def apply_damage_to_officer(officer, raw_damage):
     officer["total_dead"] += dead_now
 
 def process_turn_deadification(team):
-    """ターン境界の戦死化処理 (約10.36%)"""
     for o in team:
         if o["injured_hp"] > 0:
             turn_dead = int(o["injured_hp"] * 0.1036)
@@ -253,7 +370,6 @@ def process_turn_deadification(team):
 
 def simulate_turn_attack(attacker_team, defender_team, troop_mult):
     logs = []
-    
     alive_defenders = [o for o in defender_team if o["hp"] > 0]
     if not alive_defenders:
         return 0, []
@@ -264,7 +380,7 @@ def simulate_turn_attack(attacker_team, defender_team, troop_mult):
         if off["hp"] <= 0:
             continue
             
-        # --- 1. 回復・休養戦法の処理 ---
+        # 回復・休養戦法
         for sk in off["skills"]:
             if "回復" in sk["attr"] or "休養" in sk["attr"]:
                 if sk["rate"] > 0 and random.random() < sk["rate"]:
@@ -282,7 +398,7 @@ def simulate_turn_attack(attacker_team, defender_team, troop_mult):
                     else:
                         logs.append(f"【{off['name']}】{sk['name']} → 0回復 (空撃ち)")
 
-        # --- 2. 通常攻撃 ---
+        # 通常攻撃
         avg_def = sum(o["tousotsu"] for o in alive_defenders) / len(alive_defenders)
         normal_dmg = calc_damage(off["buyou"], avg_def, off["hp"], dmg_rate=1.0, is_skill=False, troop_mult=troop_mult)
         total_turn_dmg += normal_dmg
@@ -291,7 +407,7 @@ def simulate_turn_attack(attacker_team, defender_team, troop_mult):
         for target in alive_defenders:
             apply_damage_to_officer(target, dmg_per_target)
 
-        # --- 3. 攻撃戦法発動 ---
+        # 攻撃戦法
         for sk in off["skills"]:
             if sk["rate"] > 0 and not ("回復" in sk["attr"] or "休養" in sk["attr"]) and sk["name"] != "（なし）":
                 if random.random() < sk["rate"]:
@@ -343,15 +459,12 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
             process_turn_deadification(my_team_sim)
             process_turn_deadification(enemy_team_sim)
 
-            # 自軍攻撃（自軍→敵軍の相性適用）
             simulate_turn_attack(my_team_sim, enemy_team_sim, my_advantage_mult)
             if sum(e["hp"] for e in enemy_team_sim) == 0: break
 
-            # 敵軍攻撃（敵軍→自軍の相性適用）
             simulate_turn_attack(enemy_team_sim, my_team_sim, enemy_advantage_mult)
             if sum(m["hp"] for m in my_team_sim) == 0: break
 
-        # 終戦精算（引き分け時: 残った負傷兵の42%が戦死）
         for o in my_team_sim:
             fin_dead = int(o["injured_hp"] * 0.42)
             o["total_dead"] += fin_dead
