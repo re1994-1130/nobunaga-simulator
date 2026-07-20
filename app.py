@@ -194,7 +194,7 @@ OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 def get_officer_data(o_name):
     return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 50, 100, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, []])
 
-# --- UI構築ヘルパー（HTMLテーブルで強制的に1行横並び固定） ---
+# --- UI構築ヘルパー（st.dataframeを使用して安全にテーブル表示） ---
 def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
     st.markdown(f"### {team_name}")
     selected_troop = st.radio(
@@ -218,7 +218,7 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             o_data = get_officer_data(o_name)
             o_buyou, o_chiryaku, o_tousotsu, o_speed, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits = o_data
 
-            # --- ステータス & ポイント振り分け（HTMLテーブルで完全固定レイアウト） ---
+            # --- ステータス & ポイント振り分け ---
             st.markdown("##### 属性 / ステータス")
             
             pt_key = f"{team_prefix}_{idx}_remaining_pts"
@@ -243,7 +243,6 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             allocated_stats = {}
             current_remaining = st.session_state[pt_key]
 
-            # 状態更新チェック用
             needs_rerun = False
             for stat_name, base_val in base_stats.items():
                 input_val = st.number_input(
@@ -262,33 +261,23 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             if needs_rerun:
                 st.rerun()
 
-            # HTMLテーブルで「属性名 | 素 | 振分値 | 合計」を絶対に1行で並べる
-            table_html = f"""
-            <table style="width:100%; text-align:center; border-collapse:collapse; margin-top:10px; margin-bottom:10px;">
-                <tr style="border-bottom: 1px solid #444; color: #888; font-size: 0.85em;">
-                    <th style="text-align:left; padding:4px;">属性</th>
-                    <th style="padding:4px;">素</th>
-                    <th style="padding:4px;">振分</th>
-                    <th style="padding:4px;">合計</th>
-                </tr>
-            """
+            # st.dataframeを使って安全・確実に表として表示
+            df_data = []
             for stat_name, base_val in base_stats.items():
                 alloc_val = st.session_state[alloc_keys[stat_name]]
                 total_val = base_val + alloc_val
-                table_html += f"""
-                <tr style="border-bottom: 1px solid #222;">
-                    <td style="text-align:left; padding:6px; font-weight:bold;">{stat_name}</td>
-                    <td style="padding:6px; color:#bbb;">{base_val}</td>
-                    <td style="padding:6px; color:#4da6ff;">+{alloc_val}</td>
-                    <td style="padding:6px; font-weight:bold; color:#fff;">{total_val}</td>
-                </tr>
-                """
-            table_html += "</table>"
-            st.markdown(table_html, unsafe_allow_html=True)
+                df_data.append({
+                    "属性": stat_name,
+                    "素": base_val,
+                    "振分": f"+{alloc_val}",
+                    "合計": total_val
+                })
+            df_status = pd.DataFrame(df_data)
+            st.dataframe(df_status, use_container_width=True, hide_index=True)
 
             st.caption(f"残 **{st.session_state[pt_key]}** / 50 PT")
 
-            # --- 特性（凸連動）の縦並び表示 ---
+            # --- 特性（凸連動） ---
             st.markdown("---")
             st.markdown("##### 特性（凸連動）")
             for t in traits:
