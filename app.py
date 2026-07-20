@@ -1,4 +1,5 @@
 import random
+import re
 import pandas as pd
 import streamlit as st
 
@@ -29,6 +30,22 @@ def get_troop_advantage(attacker_type, defender_type):
     elif adv_map.get(defender_type) == attacker_type:
         return 0.875  # 不利
     return 1.0  # 中立
+
+# --- 特性名から兵種適性加算（ボーナス）を自動判別するヘルパー関数 ---
+def parse_trait_troop_bonus(trait_name):
+    """
+    特性名に含まれるキーワードから適性向上兵種を判定
+    """
+    bonuses = []
+    if any(k in trait_name for k in ["槍", "足軽"]):
+        bonuses.append("足軽")
+    if any(k in trait_name for k in ["馬", "騎"]):
+        bonuses.append("騎兵")
+    if any(k in trait_name for k in ["弓"]):
+        bonuses.append("弓兵")
+    if any(k in trait_name for k in ["砲", "鉄砲"]):
+        bonuses.append("鉄砲")
+    return bonuses
 
 # --- 伝授・事件戦法データベース ---
 SKILL_DATABASE = {
@@ -64,93 +81,112 @@ SKILL_DATABASE = {
 }
 SKILL_LIST = sorted(list(SKILL_DATABASE.keys()))
 
-# --- 武将統合データベース（基礎ステータス・兵種適性・凸特性拡張版） ---
-# 形式: [武勇, 知略, 統率, 固有名, 確率, 発動ダメ, タイプ, 属性, 兵種適性Dict, 特性リスト]
-# 特性リスト形式: [{"req": 必要凸数, "name": 特性名, "troop": 兵種, "bonus": 適正加算値}]
-OFFICER_DATABASE = {
-    "柴田勝家": [
-        208, 95, 162, "かかれ柴田", 50, 154, "能動", "兵刃",
-        {"足軽": 2, "騎兵": 3, "弓兵": 1, "鉄砲": 1},
-        [
-            {"req": 0, "name": "騎兵大将", "troop": "騎兵", "bonus": 1},
-            {"req": 1, "name": "突破", "troop": "騎兵", "bonus": 1},
-            {"req": 3, "name": "猛将", "troop": None, "bonus": 0},
-            {"req": 5, "name": "鬼柴田", "troop": "騎兵", "bonus": 1}
-        ]
-    ],
-    "明智光秀": [
-        140, 183, 165, "時は今", 70, 56, "能動", "計略",
-        {"足軽": 1, "騎兵": 1, "弓兵": 2, "鉄砲": 3},
-        [
-            {"req": 0, "name": "鉄砲大将", "troop": "鉄砲", "bonus": 1},
-            {"req": 1, "name": "狙撃", "troop": "鉄砲", "bonus": 1},
-            {"req": 3, "name": "策士", "troop": None, "bonus": 0},
-            {"req": 5, "name": "金ヶ崎の執念", "troop": "鉄砲", "bonus": 1}
-        ]
-    ],
-    "本多正信": [
-        43, 195, 120, "非常の器", 100, 66, "指揮", "休養",
-        {"足軽": 2, "騎兵": 1, "弓兵": 3, "鉄砲": 2},
-        [
-            {"req": 0, "name": "弓兵大将", "troop": "弓兵", "bonus": 1},
-            {"req": 1, "name": "参謀", "troop": "弓兵", "bonus": 1},
-            {"req": 3, "name": "謀略", "troop": None, "bonus": 0},
-            {"req": 5, "name": "権謀術数", "troop": "弓兵", "bonus": 1}
-        ]
-    ],
-    "上杉謙信": [
-        247, 186, 210, "軍神", 100, 160, "受動", "兵刃",
-        {"足軽": 3, "騎兵": 3, "弓兵": 1, "鉄砲": 1},
-        [
-            {"req": 0, "name": "騎兵大将", "troop": "騎兵", "bonus": 1},
-            {"req": 1, "name": "毘沙門天", "troop": "騎兵", "bonus": 1},
-            {"req": 3, "name": "車懸かり", "troop": "足軽", "bonus": 1},
-            {"req": 5, "name": "越後の龍", "troop": "騎兵", "bonus": 1}
-        ]
-    ],
-    "徳川家康": [
-        155, 231, 210, "三河魂", 100, 0, "指揮", "計略",
-        {"足軽": 3, "騎兵": 2, "弓兵": 2, "鉄砲": 2},
-        [
-            {"req": 0, "name": "足軽大将", "troop": "足軽", "bonus": 1},
-            {"req": 1, "name": "忍耐", "troop": "足軽", "bonus": 1},
-            {"req": 3, "name": "統帥", "troop": None, "bonus": 0},
-            {"req": 5, "name": "神君", "troop": "足軽", "bonus": 1}
-        ]
-    ],
-    "武田信玄": [
-        191, 202, 205, "風林火山", 100, 124, "指揮", "計略",
-        {"足軽": 2, "騎兵": 3, "弓兵": 2, "鉄砲": 1},
-        [
-            {"req": 0, "name": "騎兵大将", "troop": "騎兵", "bonus": 1},
-            {"req": 1, "name": "侵略如火", "troop": "騎兵", "bonus": 1},
-            {"req": 3, "name": "不動如山", "troop": "足軽", "bonus": 1},
-            {"req": 5, "name": "甲斐の虎", "troop": "騎兵", "bonus": 1}
-        ]
-    ],
-    "今川義元": [
-        174, 194, 180, "海道一", 70, 134, "突撃", "計略",
-        {"足軽": 1, "騎兵": 1, "弓兵": 3, "鉄砲": 2},
-        [
-            {"req": 0, "name": "弓兵大将", "troop": "弓兵", "bonus": 1},
-            {"req": 1, "name": "射術", "troop": "弓兵", "bonus": 1},
-            {"req": 3, "name": "威風", "troop": None, "bonus": 0},
-            {"req": 5, "name": "海道一の弓取り", "troop": "弓兵", "bonus": 1}
-        ]
-    ],
-    "織田信長": [
-        180, 231, 195, "新生", 100, 0, "指揮", "計略",
-        {"足軽": 2, "騎兵": 2, "弓兵": 1, "鉄砲": 3},
-        [
-            {"req": 0, "name": "鉄砲大将", "troop": "鉄砲", "bonus": 1},
-            {"req": 1, "name": "三段構え", "troop": "鉄砲", "bonus": 1},
-            {"req": 3, "name": "覇王", "troop": None, "bonus": 0},
-            {"req": 5, "name": "天下布武", "troop": "鉄砲", "bonus": 1}
-        ]
-    ]
-}
+# --- 武将生データ定義（テキストデータより構築） ---
+# 形式: [勢力, 名前, レア, コスト, 統率, 武勇, 知略, 速度, 主特性, 1凸特性, 3凸特性, 5凸特性, 固有戦法]
+RAW_OFFICER_LIST = [
+    # 織田
+    ["織田", "織田信長", "名将", 7, 231, 161, 175, 110, "魔王", "覇王", "攻勢Ⅱ", "砲術Ⅱ", "新生"],
+    ["織田", "明智光秀", "名将", 7, 183, 140, 220, 116, "連歌百韻", "波風", "知謀Ⅱ", "砲術Ⅱ", "時は今"],
+    ["織田", "まつ", "名将", 6, 157, 71, 166, 65, "淑徳", "馬槍術Ⅰ", "忍耐Ⅱ", "守勢Ⅲ", "松柏之操"],
+    ["織田", "帰蝶", "名将", 6, 161, 99, 177, 139, "短刀の契", "忍耐Ⅲ", "知恵Ⅱ", "砲術Ⅱ", "帰蝶の舞"],
+    ["織田", "荒木村重", "名将", 6, 158, 91, 185, 64, "弓術Ⅱ", "知恵Ⅲ", "看破Ⅱ", "堅固Ⅱ", "形影相弔"],
+    ["織田", "佐久間信盛", "名将", 6, 173, 95, 160, 86, "堅固Ⅲ", "固守Ⅱ", "統帥Ⅱ", "馬術Ⅱ", "陣前無我"],
+    ["織田", "妻木煕子", "名将", 6, 116, 55, 182, 60, "謀攻Ⅲ", "砲術Ⅲ", "奮戦Ⅱ", "知恵Ⅱ", "内助の賢"],
+    ["織田", "柴田勝家", "名将", 6, 162, 208, 138, 167, "瓶割り", "馬術Ⅲ", "武威Ⅱ", "血気Ⅱ", "かかれ柴田"],
+    ["織田", "前田慶次", "名将", 6, 127, 206, 132, 123, "傾奇者", "馬槍術Ⅱ", "武威Ⅱ", "牢固Ⅱ", "天下御免"],
+    ["織田", "前田利家", "名将", 6, 158, 186, 121, 114, "算盤勘定", "馬槍術Ⅱ", "奮戦Ⅲ", "武威I", "槍の又左"],
+    ["織田", "明智秀満", "名将", 6, 147, 129, 182, 61, "統帥Ⅲ", "看破Ⅰ", "攻勢Ⅲ", "砲術Ⅱ", "湖水渡り"],
+    ["織田", "稲葉一鉄", "名将", 5, 175, 101, 150, 56, "防護Ⅲ", "統帥Ⅱ", "剛猛I", "槍術Ⅱ", "一徹の意志"],
+    ["織田", "森可成", "名将", 5, 145, 189, 112, 125, "槍術Ⅲ", "攻勢Ⅱ", "血気Ⅲ", "器術Ⅲ", "攻めの三左"],
+    ["織田", "お市", "名将", 3, 128, 64, 156, 97, "砲術Ⅱ", "牢固Ⅲ", "槍術Ⅰ", "器術Ⅱ", "夢幻泡影"],
 
-# データベースにない武将のデフォルトフォールバック用関数
+    # 豊臣
+    ["豊臣", "黒田官兵衛", "名将", 7, 167, 113, 229, 68, "方円の器", "玄謀", "妙計Ⅱ", "砲術Ⅱ", "水の如し"],
+    ["豊臣", "豊臣秀吉", "名将", 7, 180, 111, 228, 81, "人たらし", "立身出世", "器術Ⅱ", "弓砲術Ⅱ", "千成瓢箪"],
+    ["豊臣", "お初", "名将", 6, 143, 63, 171, 68, "手足之愛", "弓槍術Ⅱ", "攻勢Ⅱ", "知恵Ⅱ", "同気連枝"],
+    ["豊臣", "ねね", "名将", 6, 152, 58, 178, 61, "謀攻Ⅲ", "防護Ⅱ", "弓術Ⅱ", "知恵Ⅱ", "比翼連理"],
+    ["豊臣", "加藤清正", "名将", 6, 158, 191, 124, 117, "築城名手", "気勢Ⅲ", "槍術Ⅱ", "武威Ⅱ", "破竹の勢い"],
+    ["豊臣", "宮部継潤", "名将", 6, 153, 72, 199, 77, "弓槍術Ⅱ", "固守Ⅱ", "知謀Ⅱ", "器術Ⅱ", "積水成淵"],
+    ["豊臣", "成田甲斐", "名将", 6, 145, 164, 117, 117, "姫武者", "馬弓術Ⅱ", "猛攻Ⅱ", "防護Ⅱ", "東国無双の麗"],
+    ["豊臣", "竹中半兵衛", "名将", 6, 150, 89, 231, 76, "鳳凰", "知謀Ⅲ", "弓術Ⅲ", "看破Ⅱ", "十面埋伏"],
+    ["豊臣", "福島正則", "名将", 6, 151, 206, 120, 117, "猪武者", "尽力Ⅱ", "槍術Ⅲ", "弓術Ⅰ", "七本槍筆頭"],
+    ["豊臣", "蜂須賀小六", "名将", 5, 126, 166, 173, 79, "弓砲術Ⅱ", "急速Ⅱ", "破敵Ⅲ", "牢固Ⅰ", "楼岸一番"],
+    ["豊臣", "可児才蔵", "名将", 4, 97, 183, 104, 95, "武威Ⅲ", "血気Ⅱ", "攻勢Ⅰ", "槍術Ⅲ", "笹の才蔵"],
+    ["豊臣", "加藤嘉明", "名将", 3, 135, 146, 148, 98, "弓槍術Ⅱ", "武威Ⅱ", "知略Ⅱ", "牢固Ⅱ", "剛毅木訥"],
+
+    # 徳川
+    ["徳川", "酒井忠次", "名将", 7, 187, 187, 153, 119, "血気Ⅲ", "槍術Ⅲ", "統帥Ⅱ", "守勢Ⅰ", "破陣乱舞"],
+    ["徳川", "徳川家康", "名将", 7, 231, 155, 169, 61, "三河武士", "古狸", "牢固Ⅱ", "弓槍術Ⅱ", "三河魂"],
+    ["徳川", "本多忠勝", "名将", 7, 169, 229, 116, 81, "無傷の誇り", "剛猛Ⅱ", "槍術Ⅱ", "器術Ⅱ", "古今独歩"],
+    ["徳川", "お江", "名将", 6, 154, 65, 169, 71, "花枝招展", "馬槍術Ⅱ", "守勢Ⅱ", "知恵Ⅱ", "風姿綽約"],
+    ["徳川", "榊原康政", "名将", 6, 155, 182, 140, 151, "馬術Ⅲ", "急速Ⅱ", "血気Ⅲ", "統帥Ⅰ", "無想掃討"],
+    ["徳川", "松平信康", "名将", 6, 160, 179, 131, 141, "威勢Ⅲ", "血気Ⅱ", "武威Ⅲ", "槍術Ⅱ", "勇志不抜"],
+    ["徳川", "高力清長", "名将", 5, 180, 104, 148, 76, "統帥Ⅲ", "看破Ⅱ", "弓槍術Ⅱ", "守勢Ⅰ", "仏の高力"],
+    ["徳川", "本多正信", "名将", 5, 83, 43, 192, 86, "弓術Ⅱ", "看破Ⅲ", "猛攻Ⅰ", "知恵Ⅲ", "非常の器"],
+
+    # 武田
+    ["武田", "山県昌景", "名将", 7, 169, 224, 139, 162, "赤備え", "勇烈", "馬術Ⅲ", "気勢Ⅰ", "武田之赤備"],
+    ["武田", "真田昌幸", "名将", 7, 176, 105, 231, 76, "老獪", "虚実", "弓砲術Ⅱ", "知恵Ⅰ", "表裏比興"],
+    ["武田", "武田信玄", "名将", 7, 202, 191, 194, 139, "甲斐の虎", "人は城", "固守Ⅱ", "馬術Ⅱ", "風林火山"],
+    ["武田", "甘利虎泰", "名将", 6, 163, 176, 94, 59, "槍術Ⅲ", "破敵Ⅱ", "急速Ⅱ", "武威Ⅱ", "剛の武者"],
+    ["武田", "山本勘助", "名将", 6, 155, 103, 224, 117, "側撃", "弓槍術Ⅱ", "知謀Ⅱ", "攻勢Ⅰ", "啄木鳥"],
+    ["武田", "内藤昌豊", "名将", 6, 154, 101, 189, 68, "牢固Ⅲ", "知恵Ⅱ", "馬術Ⅱ", "謀攻Ⅱ", "死灰復然"],
+    ["武田", "馬場信春", "名将", 6, 203, 161, 170, 102, "不死身", "剛猛Ⅲ", "馬術Ⅱ", "防護Ⅱ", "鬼美濃"],
+    ["武田", "板垣信方", "名将", 6, 165, 88, 176, 47, "知恵Ⅲ", "防護Ⅱ", "器術Ⅲ", "攻勢Ⅰ", "先手必勝"],
+    ["武田", "飯富虎昌", "名将", 6, 136, 203, 95, 109, "赤備え", "馬術Ⅲ", "血気Ⅲ", "武威I", "甲山猛虎"],
+    ["武田", "一条信龍", "名将", 5, 153, 156, 125, 90, "弓術Ⅱ", "統帥Ⅱ", "防護Ⅱ", "剛猛I", "不屈の精神"],
+    ["武田", "岡部元信", "名将", 5, 131, 134, 179, 63, "攻勢Ⅲ", "威勢Ⅱ", "剛猛I", "知恵I", "洞察反撃"],
+    ["武田", "原虎胤", "名将", 5, 108, 185, 96, 69, "統帥Ⅲ", "牢固Ⅱ", "剛猛I", "看破Ⅰ", "夜叉美濃"],
+    ["武田", "諏訪姫", "名将", 4, 143, 75, 145, 100, "猛攻Ⅲ", "器術Ⅱ", "看破Ⅰ", "攻勢Ⅱ", "諏訪の光"],
+]
+
+# --- 全武将統合データベース構築 ---
+OFFICER_DATABASE = {}
+
+for item in RAW_OFFICER_LIST:
+    faction, name, rare, cost, tousotsu, buyou, chiryaku, speed, t_main, t_r1, t_r3, t_r5, skill_name = item
+    
+    # 固有戦法の仮パラメータ（発動率100%, 威力120%, 受動, 兵刃 or 計略）
+    # 武勇 > 知略 の場合は兵刃、知略 >= 武勇 の場合は計略
+    s_attr = "計略" if chiryaku >= buyou else "兵刃"
+    s_rate = 100
+    s_dmg = 120
+    
+    # 兵種適性（初期の基礎適性レベル: 全兵種1とし、主特性からボーナス付加）
+    base_aptitudes = {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}
+    main_bonus_troops = parse_trait_troop_bonus(t_main)
+    for b_troop in main_bonus_troops:
+        if b_troop in base_aptitudes:
+            base_aptitudes[b_troop] += 1
+
+    # 特性リスト（初期・1凸・3凸・5凸）
+    trait_defs = [
+        {"req": 0, "name": t_main, "raw": t_main},
+        {"req": 1, "name": t_r1, "raw": t_r1},
+        {"req": 3, "name": t_r3, "raw": t_r3},
+        {"req": 5, "name": t_r5, "raw": t_r5},
+    ]
+
+    traits = []
+    for td in trait_defs:
+        b_troops = parse_trait_troop_bonus(td["raw"])
+        # 単一の対応兵種、または複数兵種へ適用
+        primary_troop = b_troops[0] if len(b_troops) > 0 else None
+        traits.append({
+            "req": td["req"],
+            "name": td["name"],
+            "troop": primary_troop,
+            "bonus": 1 if primary_troop else 0,
+            "all_bonus_troops": b_troops
+        })
+
+    OFFICER_DATABASE[name] = [
+        buyou, chiryaku, tousotsu, skill_name, s_rate, s_dmg, "受動", s_attr,
+        base_aptitudes, traits
+    ]
+
+OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
+
 def get_officer_data(o_name):
     if o_name in OFFICER_DATABASE:
         return OFFICER_DATABASE[o_name]
@@ -159,14 +195,12 @@ def get_officer_data(o_name):
             100, 100, 100, "汎用武将", 50, 100, "能動", "兵刃",
             {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1},
             [
-                {"req": 0, "name": "汎用初期", "troop": "足軽", "bonus": 1},
-                {"req": 1, "name": "汎用1凸", "troop": "騎兵", "bonus": 1},
-                {"req": 3, "name": "汎用3凸", "troop": "弓兵", "bonus": 1},
-                {"req": 5, "name": "汎用5凸", "troop": "鉄砲", "bonus": 1}
+                {"req": 0, "name": "汎用初期", "troop": "足軽", "bonus": 1, "all_bonus_troops": ["足軽"]},
+                {"req": 1, "name": "汎用1凸", "troop": "騎兵", "bonus": 1, "all_bonus_troops": ["騎兵"]},
+                {"req": 3, "name": "汎用3凸", "troop": "弓兵", "bonus": 1, "all_bonus_troops": ["弓兵"]},
+                {"req": 5, "name": "汎用5凸", "troop": "鉄砲", "bonus": 1, "all_bonus_troops": ["鉄砲"]}
             ]
         ]
-
-OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 
 # --- UI・設定 ---
 st.sidebar.header("⚙️ 対戦設定")
@@ -188,7 +222,6 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
     tabs = st.tabs([f"【{r}】" for r in roles])
     team_officers = []
 
-    # 兵種適性および凸特性による合計適性レベル集計用
     total_troop_levels = {t: 0 for t in TROOP_TYPES}
 
     for idx, tab in enumerate(tabs):
@@ -199,7 +232,7 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             o_data = get_officer_data(o_name)
             o_buyou, o_chiryaku, o_tousotsu, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits = o_data
 
-            # --- ランクアップ（凸数）選択 ---
+            # ランクアップ（凸数）選択
             rank = st.radio(
                 "ランクアップ（凸数）",
                 [0, 1, 2, 3, 4, 5],
@@ -208,22 +241,23 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
                 key=f"{team_prefix}_{idx}_rank"
             )
 
-            # 凸に応じた特性の解放状態判定
             active_traits = []
             for trait in traits:
                 is_unlocked = rank >= trait["req"]
                 active_traits.append({**trait, "unlocked": is_unlocked})
                 
-                # 兵種適性加算
-                if is_unlocked and trait["troop"] in total_troop_levels:
-                    total_troop_levels[trait["troop"]] += trait["bonus"]
+                # 凸特性による兵種適性加算（複数対象特性にも対応）
+                if is_unlocked:
+                    for b_t in trait.get("all_bonus_troops", []):
+                        if b_t in total_troop_levels:
+                            total_troop_levels[b_t] += 1
 
-            # 武将本体の基礎兵種適性も加算
+            # 武将本体の基礎兵種適性を加算
             for t_type, val in troop_aptitudes.items():
                 if t_type in total_troop_levels:
                     total_troop_levels[t_type] += val
 
-            # --- UI表示：特性（凸連動）の表示 ---
+            # UI表示：特性（凸連動）
             st.caption("📜 **特性（凸連動）**")
             trait_cols = st.columns(len(traits))
             for t_idx, trait in enumerate(active_traits):
@@ -231,7 +265,7 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
                     if trait["unlocked"]:
                         st.success(f"**[{trait['req']}凸]** {trait['name']}")
                     else:
-                        st.info(f"🔒 **[{trait['req']}凸]** 封印中")
+                        st.info(f"🔒 **[{trait['req']}凸]** {trait['name']}")
 
             st.caption(f"・固有戦法: **【{db_s1_name}】**")
 
@@ -260,10 +294,9 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
                 "skills": skills
             })
 
-    # 部隊の選択兵種における合計兵種レベル
     team_troop_level = total_troop_levels.get(selected_troop, 0)
 
-    # --- 部隊兵種レベル表示領域 ---
+    # 部隊兵種レベル表示
     st.markdown("#### 🛡️ 部隊合計兵種適性レベル")
     lvl_cols = st.columns(len(TROOP_TYPES))
     for idx, t_type in enumerate(TROOP_TYPES):
@@ -277,10 +310,10 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
 main_tab1, main_tab2 = st.tabs(["🔵 自軍（あなた）", "🔴 敵軍（対戦相手）"])
 
 with main_tab1:
-    my_team, my_troop, my_troop_lvl = input_team_data("my", "自軍編成", ["本多正信", "上杉謙信", "柴田勝家"], default_troop_idx=1) # 騎兵
+    my_team, my_troop, my_troop_lvl = input_team_data("my", "自軍編成", ["織田信長", "柴田勝家", "明智光秀"], default_troop_idx=1) # 騎兵
 
 with main_tab2:
-    enemy_team, enemy_troop, enemy_troop_lvl = input_team_data("enemy", "敵軍編成", ["徳川家康", "武田信玄", "今川義元"], default_troop_idx=2) # 弓兵
+    enemy_team, enemy_troop, enemy_troop_lvl = input_team_data("enemy", "敵軍編成", ["徳川家康", "本多忠勝", "酒井忠次"], default_troop_idx=0) # 足軽
 
 # 相性倍率 & 兵種レベル補正の計算
 base_my_adv = get_troop_advantage(my_troop, enemy_troop)
