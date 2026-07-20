@@ -7,19 +7,43 @@ st.set_page_config(
 )
 
 st.title("⚔️ 部隊対戦シミュレータ")
-st.caption("自軍 vs 敵軍 8ターン対戦・勝率検証ツール（データベース拡充版）")
+st.caption("自軍 vs 敵軍 8ターン対戦・勝率検証ツール（Excelデータベース完全統合版）")
 
-# --- 伝授戦法データベース ---
+# --- Excelから拡張した伝授・事件戦法データベース ---
+# 構造: "戦法名": [発動確率(%), ダメージ率(%), "品質", "タイプ"]
 SKILL_DATABASE = {
-    "（なし）": [0, 0],
-    "伝授戦法A": [35, 100],
-    "伝授戦法B": [40, 120],
-    "伝授戦法C": [30, 150],
-    "伝授戦法D": [50, 80],
+    "（なし）": [0, 0, "-", "-"],
+    # ─── S級戦法 ───
+    "意気衝天": [45, 0, "S", "指揮"],       # 封印メインのためシミュレータ上はダメージ0
+    "千軍一掃": [40, 100, "S", "アクティブ"],  # 固有連携等があるがベースダメ
+    "万矢斉射": [40, 130, "S", "アクティブ"],
+    "破陣砕堅": [35, 158, "S", "アクティブ"],
+    "避実撃虚": [50, 185, "S", "アクティブ"],
+    "一騎当千": [30, 108, "S", "突撃"],
+    "百騎劫営": [40, 162, "S", "突撃"],
+    "折衝禦侮": [45, 0, "S", "突撃"],
+    "杯中蛇影": [50, 153, "S", "アクティブ"],
+    "四面楚歌": [50, 144, "S", "アクティブ"],
+    "奪魂挟魄": [55, 0, "S", "アクティブ"],   # ステータス奪取
+    "八門金鎖の陣": [100, 0, "S", "陣法"],
+    "白馬義従": [100, 0, "S", "兵種"],
+    # ─── A級戦法 ───
+    "強攻": [45, 0, "A", "パッシブ"],        # 連撃付与
+    "手起刀落": [30, 214, "A", "突撃"],
+    "落鳳": [35, 250, "A", "アクティブ"],
+    "縦兵掠奪": [35, 172, "A", "アクティブ"],
+    "軽勇飛燕": [40, 84, "A", "アクティブ"],   # 多段ヒット系ベース
+    "両刀大斧": [35, 180, "A", "アクティブ"],
+    "御敵屏障": [100, 0, "A", "指揮"],
+    "坐守孤城": [45, 0, "A", "アクティブ"],   # 回復
+    "機略縦横": [45, 58, "A", "アクティブ"],
+    "風声鶴唳": [45, 105, "A", "アクティブ"],
+    "天降火雨": [50, 118, "A", "アクティブ"],
+    "後発制人": [100, 52, "A", "パッシブ"],   # 反撃ベース
 }
 SKILL_LIST = list(SKILL_DATABASE.keys())
 
-# --- テキストから抽出した武将データベース ---
+# --- 武将データベース ---
 # 構造： "武将名": [攻撃力, 防御力, "固有戦法名", 発動率%, ダメージ率%]
 OFFICER_DATABASE = {
     # 織田
@@ -121,7 +145,7 @@ OFFICER_DATABASE = {
 OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 
 # --- サイドバー：対戦・環境設定 ---
-st.sidebar.header("⚙️ 対戦設定")
+st.sidebar.header("⚙️ 对戦設定")
 initial_hp_per_officer = st.sidebar.number_input(
     "1武将あたりの兵力", min_value=1000, max_value=20000, value=10000, step=1000
 )
@@ -129,7 +153,7 @@ sim_trials = st.sidebar.selectbox(
     "対戦試行回数", [1000, 5000, 10000], index=0
 )
 
-# 武将データの入力 UI 作成用関数（セレクトボックス化・スマホ対応）
+# 武将データの入力 UI 作成用関数
 def input_team_data(team_prefix, team_name, default_choices):
     st.markdown(f"### {team_name}")
     roles = ["主将", "副将1", "副将2"]
@@ -138,11 +162,9 @@ def input_team_data(team_prefix, team_name, default_choices):
 
     for idx, tab in enumerate(tabs):
         with tab:
-            # 武将データベースから選択
             default_idx = OFFICER_LIST.index(default_choices[idx]) if default_choices[idx] in OFFICER_LIST else 0
             o_name = st.selectbox("武将を選択", OFFICER_LIST, index=default_idx, key=f"{team_prefix}_{idx}_select")
             
-            # 選択された武将の初期値をデータベースから取得
             db_atk, db_def, db_s1_name, db_s1_rate, db_s1_dmg = OFFICER_DATABASE[o_name]
 
             c1, c2, c3 = st.columns(3)
@@ -156,16 +178,20 @@ def input_team_data(team_prefix, team_name, default_choices):
             st.markdown(f"**▼ 戦法構成**")
             st.caption(f"・固有: 【{db_s1_name}】 (発動率: {db_s1_rate}% / ダメージ率: {db_s1_dmg}%)")
             
-            s2_name = st.selectbox("伝授戦法1", SKILL_LIST, index=1 if idx==0 else 2, key=f"{team_prefix}_{idx}_s2_name")
+            # 初期選択値を実用的なS級・A級戦法にマッピング
+            s2_default_idx = SKILL_LIST.index("万矢斉射") if "万矢斉射" in SKILL_LIST else 0
+            s3_default_idx = SKILL_LIST.index("落鳳") if "落鳳" in SKILL_LIST else 0
+            
+            s2_name = st.selectbox("伝授戦法1", SKILL_LIST, index=s2_default_idx if idx==0 else s3_default_idx, key=f"{team_prefix}_{idx}_s2_name")
             s2_data = SKILL_DATABASE[s2_name]
 
-            s3_name = st.selectbox("伝授戦法2", SKILL_LIST, index=2 if idx==0 else 0, key=f"{team_prefix}_{idx}_s3_name")
+            s3_name = st.selectbox("伝授戦法2", SKILL_LIST, index=s3_default_idx if idx==0 else 0, key=f"{team_prefix}_{idx}_s3_name")
             s3_data = SKILL_DATABASE[s3_name]
 
             skills = [
-                {"name": db_s1_name, "rate": db_s1_rate / 100.0, "dmg": db_s1_dmg / 100.0},
-                {"name": s2_name, "rate": s2_data[0] / 100.0, "dmg": s2_data[1] / 100.0},
-                {"name": s3_name, "rate": s3_data[0] / 100.0, "dmg": s3_data[1] / 100.0},
+                {"name": db_s1_name, "rate": db_s1_rate / 100.0, "dmg": db_s1_dmg / 100.0, "quality": "固有"},
+                {"name": s2_name, "rate": s2_data[0] / 100.0, "dmg": s2_data[1] / 100.0, "quality": s2_data[2]},
+                {"name": s3_name, "rate": s3_data[0] / 100.0, "dmg": s3_data[1] / 100.0, "quality": s3_data[2]},
             ]
 
             team_officers.append({
@@ -207,7 +233,9 @@ def simulate_turn_attack(attacker_team, defender_team):
             if sk["rate"] > 0 and sk["name"] != "（なし）" and random.random() < sk["rate"]:
                 dmg = calc_damage(off["atk"], avg_def, sk["dmg"], off["buff"])
                 turn_dmg += dmg
-                logs.append(f"【{off['name']}】{sk['name']} → {dmg:,}ダメ")
+                # ログに品質（S/A）を表示してわかりやすく
+                q_label = f"[{sk['quality']}]" if sk['quality'] != "固有" else "【固有】"
+                logs.append(f"【{off['name']}】{q_label}{sk['name']} → {dmg:,}ダメ")
     return turn_dmg, logs
 
 # --- シミュレーション実行 ---
