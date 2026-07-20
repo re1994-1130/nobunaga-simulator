@@ -1,9 +1,17 @@
 # -*- coding: utf-8 -*-
-"""
-信長の野望 覇道 / 戦略シミュレーション用 特性・武将データベース管理モジュール
-"""
+import random
+import re
+import pandas as pd
+import streamlit as st
 
-# 特性データベース定義
+st.set_page_config(
+    page_title="『信長の野望 真戦』部隊対戦シミュレータ", layout="centered"
+)
+
+st.title("⚔️ 部隊対戦シミュレータ")
+st.caption("自軍 vs 敵軍 8ターン対戦（兵種適性・凸特性・兵種相性・最低保証床補正・負傷兵完全実装版）")
+
+# --- 特性データベース定義 ---
 TRAIT_DATABASE = {
     # --- 金帯・固有特性 ---
     "一番槍": {
@@ -342,8 +350,7 @@ TRAIT_DATABASE = {
         "category": "致命回避",
         "characters": {"竹中半兵衛": "無凸"}
     },
-
-    # --- 汎用特性（抜粋・追加分） ---
+    # --- 汎用特性（一部抜粋） ---
     "剛猛Ⅰ": {"type": "汎用", "effect": "自身が通常攻撃を受ける確率小幅上昇", "category": "被通常攻撃率", "characters": {"原虎胤": "3凸", "一条信龍": "5凸", "伊達輝宗": "5凸", "岡部元信": "3凸", "稲葉一鉄": "3凸"}},
     "剛猛Ⅱ": {"type": "汎用", "effect": "自身が通常攻撃を受ける確率中幅上昇", "category": "被通常攻撃率", "characters": {"本多忠勝": "1凸", "千坂景親": "1凸", "長野業正": "3凸"}},
     "剛猛Ⅲ": {"type": "汎用", "effect": "自身が通常攻撃を受ける確率大幅上昇", "category": "被通常攻撃率", "characters": {"馬場信春": "1凸"}},
@@ -352,7 +359,6 @@ TRAIT_DATABASE = {
     "器術Ⅱ": {"type": "汎用", "effect": "部隊の兵器レベル+2", "category": "兵種レベル", "characters": {"本多忠勝": "5凸", "豊臣秀吉": "3凸", "お市": "5凸", "池田恒興": "無凸", "三枝昌貞": "1凸", "甘粕景継": "3凸", "池田せん": "3凸", "国司元相": "3凸", "諏訪姫": "1凸", "安藤守就": "3凸", "宮部継潤": "5凸", "小山田茂誠": "3凸"}},
     "器術Ⅲ": {"type": "汎用", "effect": "部隊の兵器レベル+3", "category": "兵種レベル", "characters": {"森可成": "5凸", "板垣信方": "3凸", "小山田信茂": "無凸", "多田三八郎": "3凸", "坂井政尚": "無凸", "鈴木重朝": "1凸"}},
     "固守Ⅱ": {"type": "汎用", "effect": "自軍全体の被兵刃ダメージ-1.8%", "category": "兵刃被ダメージ軽減", "characters": {"武田信玄": "3凸", "伊達晴宗": "1凸", "浅井長政": "1凸", "長宗我部元親": "5凸", "佐久間信盛": "1凸", "毛利隆元": "3凸", "太田牛一": "1凸", "宮部継潤": "1凸", "三好実休": "3凸"}},
-    "固守Ⅲ": {"type": "汎用", "effect": "自軍全体の兵刃被ダメージが2.2%減少", "category": "兵刃被ダメージ軽減", "characters": {"安宅冬康": "1凸"}},
     "堅固Ⅰ": {"type": "汎用", "effect": "自軍全体の計略被ダメージ-2.3%", "category": "計略被ダメージ軽減", "characters": {"千坂景親": "5凸", "福原貞俊": "3凸", "佐竹義重": "3凸"}},
     "堅固Ⅱ": {"type": "汎用", "effect": "自軍全体の計略被ダメージ-3%", "category": "計略被ダメージ軽減", "characters": {"北条氏康": "3凸", "荒木村重": "5凸", "吉川広家": "1凸", "安宅冬康": "3凸"}},
     "堅固Ⅲ": {"type": "汎用", "effect": "自軍全体の計略被ダメージ-3.7%", "category": "計略被ダメージ軽減", "characters": {"佐久間信盛": "無凸", "宇佐美定満": "1凸", "蜂須賀家政": "無凸", "池田せん": "1凸", "斎藤義龍": "3凸", "安藤守就": "1凸", "瑞渓院": "無凸"}},
@@ -381,10 +387,9 @@ TRAIT_DATABASE = {
     "攻勢Ⅰ": {"type": "汎用", "effect": "自軍全体の与ダメージ+1%", "category": "与ダメージ上昇", "characters": {"伊達晴宗": "5凸", "山本勘助": "5凸", "板垣信方": "5凸", "南部晴政": "5凸", "可児才蔵": "3凸", "高橋紹運": "3凸"}},
     "攻勢Ⅱ": {"type": "汎用", "effect": "自軍全体の与ダメージ+1.3%", "category": "与ダメージ上昇", "characters": {"織田信長": "3凸", "島津貴久": "3凸", "長宗我部元親": "3凸", "森可成": "1凸", "斎藤義龍": "5凸", "毛利隆元": "5凸", "諏訪姫": "5凸", "小山田茂誠": "1凸", "横山喜内": "1凸", "お初": "3凸", "相馬盛胤": "1凸", "浦上宗景": "5凸"}},
     "攻勢Ⅲ": {"type": "汎用", "effect": "自軍全体の与ダメージ+1.6%", "category": "与ダメージ上昇", "characters": {"九戸政実": "無凸", "岡部元信": "無凸", "小幡景憲": "無凸", "明智秀満": "3凸"}},
-    "攻陣Ⅲ": {"type": "汎用", "effect": "このターンに通常攻撃を受けていない場合、固有以外の突撃戦法の発動率+3.5%", "category": "固有突撃発動率", "characters": {"池田恒興": "3凸", "甘粕景継": "1凸"}},
     "槍砲術Ⅱ": {"type": "汎用", "effect": "部隊の足軽・鉄砲レベル+2", "category": "兵種レベル", "characters": {"浅井長政": "無凸", "本願寺顕如": "5凸", "立花誾千代": "3凸"}},
     "槍術Ⅰ": {"type": "汎用", "effect": "部隊の足軽レベル+1", "category": "兵種レベル", "characters": {"お市": "3凸", "甘粕景継": "無凸", "遠藤直経": "3凸"}},
-    "槍術Ⅱ": {"type": "汎用", "effect": "部隊の足軽レベル+2", "category": "兵種レベル", "characters": {"本多忠勝": "3凸", "北条氏康": "5凸", "加藤清正": "3凸", "保科正俊": "無凸", "千坂景親": "無凸", "小島弥太郎": "1凸", "松平信康": "5凸", "大久保忠世": "無凸", "仙石権兵衛": "無凸", "磯野員昌": "3凸", "真柄直隆": "無凸", "脇坂安治": "無凸", "太田資正": "5凸", "斎藤利三": "無凸", "国司元相": "無凸", "立花道雪": "3凸", "福留親政": "無凸", "稲葉一鉄": "5凸"}},
+    "槍術Ⅱ": {"type": "汎用", "effect": "部隊の足軽レベル+2", "category": "兵種レベル", "characters": {"本多忠勝": "3凸", "北条氏康": "5凸", "加藤清正": "3凸", "保科正俊": "無凸", "千坂景親": "無凸", "小島弥太郎": "1凸", "松平信康": "5凸", "大久保忠世": "無凸", "仙石権兵衛": "無凸", "磯野員昌": "3凸", "真柄直隆": "無凸", "脇坂安治": "無凸", "太田資正": "5凸", "斎藤利三": "無凸", "国司元相": "無凸", "立花道雪": "3凸", "福留親政": "0凸", "稲葉一鉄": "5凸"}},
     "槍術Ⅲ": {"type": "汎用", "effect": "部隊の足軽レベル+3", "category": "兵種レベル", "characters": {"森可成": "無凸", "福島正則": "3凸", "甘利虎泰": "無凸", "酒井忠次": "1凸", "十河一存": "無凸", "下方貞清": "無凸", "可児才蔵": "5凸"}},
     "武威Ⅰ": {"type": "汎用", "effect": "武勇+2%", "category": "属性上昇", "characters": {"前田利家": "5凸", "飯富虎昌": "5凸", "真柄直隆": "5凸", "立花誾千代": "5凸"}},
     "武威Ⅱ": {"type": "汎用", "effect": "武勇+2.5%", "category": "属性上昇", "characters": {"柴田勝家": "3凸", "加藤清正": "5凸", "加藤嘉明": "1凸", "甘利虎泰": "5凸", "保科正俊": "3凸", "大久保忠世": "3凸", "九戸政実": "1凸", "北条綱成": "3凸", "立花道雪": "1凸", "十河一存": "1凸", "津田算長": "1凸", "前田慶次": "3凸", "藤林正保": "3凸"}},
@@ -392,57 +397,543 @@ TRAIT_DATABASE = {
     "気勢Ⅰ": {"type": "汎用", "effect": "会心ダメージ率が4.5%増加", "category": "会心ダメージ", "characters": {"山県昌景": "5凸"}},
     "気勢Ⅱ": {"type": "汎用", "effect": "会心ダメージ率が6%増加", "category": "会心ダメージ", "characters": {"甘粕景持": "1凸"}},
     "気勢Ⅲ": {"type": "汎用", "effect": "会心ダメージが7.5%増加", "category": "会心ダメージ", "characters": {"加藤清正": "1凸"}},
-    "牢固Ⅱ": {"type": "汎用", "effect": "被ダメージ-1.6%", "category": "被ダメージ軽減", "characters": {"徳川家康": "3凸", "加藤嘉明": "5凸", "原虎胤": "1凸", "小島弥太郎": "5凸", "山内一豊": "1凸", "南部晴政": "3凸", "横山喜内": "無凸", "氏家卜全": "無凸", "前田慶次": "5凸"}},
-    "牢固Ⅲ": {"type": "汎用", "effect": "被ダメージ-2%", "category": "被ダメージ軽減", "characters": {"朝倉義景": "無凸", "お市": "1凸", "内藤昌豊": "無凸", "三枝昌貞": "無凸", "甘粕景持": "無凸", "新発田重家": "1凸", "安東愛季": "無凸", "鈴木佐大夫": "1凸", "高橋紹運": "1凸"}},
+    "牢固Ⅱ": {"type": "汎用", "effect": "被ダメージ-1.6%", "category": "被ダメージ軽減", "characters": {"徳川家康": "3凸", "加藤嘉明": "5凸", "原虎胤": "1凸", "小島弥太郎": "5凸", "山内一豊": "1凸", "南部晴政": "3凸", "横山喜内": "0凸", "氏家卜全": "0凸", "前田慶次": "5凸"}},
+    "牢固Ⅲ": {"type": "汎用", "effect": "被ダメージ-2%", "category": "被ダメージ軽減", "characters": {"朝倉義景": "0凸", "お市": "1凸", "内藤昌豊": "0凸", "三枝昌貞": "0凸", "甘粕景持": "0凸", "新発田重家": "1凸", "安東愛季": "0凸", "鈴木佐大夫": "1凸", "高橋紹運": "1凸"}},
     "猛攻Ⅰ": {"type": "汎用", "effect": "自軍全体の兵刃与ダメージ+1.4%", "category": "兵刃与ダメージ上昇", "characters": {"本多正信": "3凸", "太田牛一": "3凸"}},
     "猛攻Ⅱ": {"type": "汎用", "effect": "自軍全体の兵刃与ダメージ+1.8%", "category": "兵刃与ダメージ上昇", "characters": {"柿崎景家": "5凸", "寿桂尼": "1凸", "成田甲斐": "3凸"}},
-    "猛攻Ⅲ": {"type": "汎用", "effect": "自軍全体の兵刃与ダメージ+2.2%", "category": "兵刃与ダメージ上昇", "characters": {"武田義信": "1凸", "仙桃院": "無凸", "太田資正": "3凸", "諏訪姫": "無凸"}},
-    "猛闘Ⅲ": {"type": "汎用", "effect": "このターンに通常攻撃を受けなかった場合、固有以外の突撃戦法の発動率+3%", "category": "非固有突撃発動率", "characters": {"斎藤利三": "1凸"}},
+    "猛攻Ⅲ": {"type": "汎用", "effect": "自軍全体の兵刃与ダメージ+2.2%", "category": "兵刃与ダメージ上昇", "characters": {"武田義信": "1凸", "仙桃院": "0凸", "太田資正": "3凸", "諏訪姫": "0凸"}},
     "看破Ⅰ": {"type": "汎用", "effect": "計略被ダメージ-2.6%", "category": "計略被ダメージ軽減", "characters": {"原虎胤": "5凸", "諏訪姫": "3凸", "下方貞清": "3凸", "明智秀満": "1凸", "藤林正保": "5凸"}},
-    "看破Ⅱ": {"type": "汎用", "effect": "計略被ダメージ-3.3%", "category": "計略被ダメージ軽減", "characters": {"伊達晴宗": "無凸", "竹中半兵衛": "5凸", "樋口兼豊": "5凸", "高力清長": "1凸", "荒木村重": "3凸", "脇坂安治": "3凸", "安東愛季": "1凸", "斎藤義龍": "1凸", "陶晴賢": "1凸", "堀直政": "無凸"}},
+    "看破Ⅱ": {"type": "汎用", "effect": "計略被ダメージ-3.3%", "category": "計略被ダメージ軽減", "characters": {"伊達晴宗": "0凸", "竹中半兵衛": "5凸", "樋口兼豊": "5凸", "高力清長": "1凸", "荒木村重": "3凸", "脇坂安治": "3凸", "安東愛季": "1凸", "斎藤義龍": "1凸", "陶晴賢": "1凸", "堀直政": "0凸"}},
     "看破Ⅲ": {"type": "汎用", "effect": "計略被ダメージ-4%", "category": "計略被ダメージ軽減", "characters": {"本多正信": "1凸", "本願寺顕如": "1凸"}},
     "知恵Ⅰ": {"type": "汎用", "effect": "知略+2%", "category": "属性上昇", "characters": {"真田昌幸": "5凸", "岡部元信": "5凸", "三好実休": "5凸"}},
-    "知恵Ⅱ": {"type": "汎用", "effect": "知略+2.5%", "category": "属性上昇", "characters": {"帰蝶": "3凸", "加藤嘉明": "3凸", "内藤昌豊": "1凸", "樋口兼豊": "3凸", "蜂須賀家政": "1凸", "岩城親隆": "無凸", "安東愛季": "3凸", "妻木熙子": "5凸", "小幡景憲": "1凸", "横山喜内": "3凸", "氏家卜全": "3凸", "津田算長": "5凸", "お初": "5凸", "お江": "5凸", "里見義堯": "5凸", "大久保長安": "1凸", "浦上宗景": "1凸"}},
-    "知恵Ⅲ": {"type": "汎用", "effect": "知略+3%", "category": "属性上昇", "characters": {"本多正信": "5凸", "ねね": "5凸", "板垣信方": "無凸", "栗山善助": "3凸", "荒木村重": "1凸", "鬼庭左月斎": "1凸", "寿桂尼": "無凸", "毛利隆元": "1凸", "尼子晴久": "1凸", "瑞渓院": "3凸"}},
-    "知謀Ⅱ": {"type": "汎用", "effect": "計略与ダメージ+3.3%", "category": "計略与ダメージ上昇", "characters": {"明智光秀": "3凸", "山本勘助": "3凸", "栗山善助": "無凸", "安藤守就": "無凸", "宮部継潤": "3凸"}},
-    "知謀Ⅲ": {"type": "汎用", "effect": "計略与ダメージ+4%", "category": "計略与ダメージ上昇", "characters": {"竹中半兵衛": "1凸", "河田長親": "無凸", "樋口兼豊": "無凸"}},
-    "砲術Ⅱ": {"type": "汎用", "effect": "部隊の鉄砲レベル+2", "category": "兵種レベル", "characters": {"織田信長": "5凸", "お市": "無凸", "明智光秀": "5凸", "帰蝶": "5凸", "甘粕景持": "5凸", "水原親憲": "無凸", "蜂須賀家政": "3凸", "池田せん": "無凸", "池田輝政": "3凸", "鬼庭左月斎": "3凸", "明智秀満": "5凸", "鈴木重朝": "無凸", "黒田官兵衛": "5凸", "大内義隆": "3凸"}},
-    "砲術Ⅲ": {"type": "汎用", "effect": "部隊の鉄砲レベル+3", "category": "兵種レベル", "characters": {"島津貴久": "無凸", "松永久秀": "3凸", "妻木熙子": "1凸", "三好実休": "1凸"}},
-    "破敵Ⅱ": {"type": "汎用", "effect": "与ダメージ+1.6%", "category": "与ダメージ上昇", "characters": {"上杉謙信": "3凸", "甘利虎泰": "1凸", "池田輝政": "無凸", "脇坂安治": "1凸", "鈴木佐大夫": "3凸"}},
-    "破敵Ⅲ": {"type": "汎用", "effect": "与ダメージ+2%", "category": "与ダメージ上昇", "characters": {"蜂須賀小六": "3凸", "国司元相": "1凸", "大祝鶴": "無凸"}},
+    "知恵Ⅱ": {"type": "汎用", "effect": "知略+2.5%", "category": "属性上昇", "characters": {"帰蝶": "3凸", "加藤嘉明": "3凸", "内藤昌豊": "1凸", "樋口兼豊": "3凸", "蜂須賀家政": "1凸", "岩城親隆": "0凸", "安東愛季": "3凸", "妻木熙子": "5凸", "小幡景憲": "1凸", "横山喜内": "3凸", "氏家卜全": "3凸", "津田算長": "5凸", "お初": "5凸", "お江": "5凸", "里見義堯": "5凸", "大久保長安": "1凸", "浦上宗景": "1凸"}},
+    "知恵Ⅲ": {"type": "汎用", "effect": "知略+3%", "category": "属性上昇", "characters": {"本多正信": "5凸", "ねね": "5凸", "板垣信方": "0凸", "栗山善助": "3凸", "荒木村重": "1凸", "鬼庭左月斎": "1凸", "寿桂尼": "0凸", "毛利隆元": "1凸", "尼子晴久": "1凸", "瑞渓院": "3凸"}},
+    "知謀Ⅱ": {"type": "汎用", "effect": "計略与ダメージ+3.3%", "category": "計略与ダメージ上昇", "characters": {"明智光秀": "3凸", "山本勘助": "3凸", "栗山善助": "0凸", "安藤守就": "0凸", "宮部継潤": "3凸"}},
+    "知謀Ⅲ": {"type": "汎用", "effect": "計略与ダメージ+4%", "category": "計略与ダメージ上昇", "characters": {"竹中半兵衛": "1凸", "河田長親": "0凸", "樋口兼豊": "0凸"}},
+    "砲術Ⅱ": {"type": "汎用", "effect": "部隊の鉄砲レベル+2", "category": "兵種レベル", "characters": {"織田信長": "5凸", "お市": "0凸", "明智光秀": "5凸", "帰蝶": "5凸", "甘粕景持": "5凸", "水原親憲": "0凸", "蜂須賀家政": "3凸", "池田せん": "0凸", "池田輝政": "3凸", "鬼庭左月斎": "3凸", "明智秀満": "5凸", "鈴木重朝": "0凸", "黒田官兵衛": "5凸", "大内義隆": "3凸"}},
+    "砲術Ⅲ": {"type": "汎用", "effect": "部隊の鉄砲レベル+3", "category": "兵種レベル", "characters": {"島津貴久": "0凸", "松永久秀": "3凸", "妻木熙子": "1凸", "三好実休": "1凸"}},
+    "破敵Ⅱ": {"type": "汎用", "effect": "与ダメージ+1.6%", "category": "与ダメージ上昇", "characters": {"上杉謙信": "3凸", "甘利虎泰": "1凸", "池田輝政": "0凸", "脇坂安治": "1凸", "鈴木佐大夫": "3凸"}},
+    "破敵Ⅲ": {"type": "汎用", "effect": "与ダメージ+2%", "category": "与ダメージ上昇", "characters": {"蜂須賀小六": "3凸", "国司元相": "1凸", "大祝鶴": "0凸"}},
     "統帥Ⅰ": {"type": "汎用", "effect": "統率+2%", "category": "属性上昇", "characters": {"榊原康政": "5凸", "結城秀康": "1凸", "鳥居元忠": "3凸", "十河一存": "3凸"}},
     "統帥Ⅱ": {"type": "汎用", "effect": "統率+2.5%", "category": "属性上昇", "characters": {"今川義元": "5凸", "朝倉義景": "1凸", "佐久間信盛": "3凸", "保科正俊": "1凸", "一条信龍": "1凸", "三枝昌貞": "3凸", "千坂景親": "3凸", "酒井忠次": "3凸", "大久保忠世": "1凸", "山内一豊": "3凸", "毛利輝元": "3凸", "大祝鶴": "1凸", "福留親政": "3凸", "氏家卜全": "1凸", "津田算長": "3凸", "稲葉一鉄": "1凸", "相馬盛胤": "3凸", "里見義堯": "1凸"}},
-    "統帥Ⅲ": {"type": "汎用", "effect": "統率+3%", "category": "属性上昇", "characters": {"原虎胤": "無凸", "水原親憲": "3凸", "高力清長": "無凸", "伊達輝宗": "無凸", "明智秀満": "無凸", "大内義隆": "無凸"}},
+    "統帥Ⅲ": {"type": "汎用", "effect": "統率+3%", "category": "属性上昇", "characters": {"原虎胤": "0凸", "水原親憲": "3凸", "高力清長": "0凸", "伊達輝宗": "0凸", "明智秀満": "0凸", "大内義隆": "0凸"}},
     "血気Ⅱ": {"type": "汎用", "effect": "兵刃与ダメージ+2.2%", "category": "兵刃与ダメージ上昇", "characters": {"柴田勝家": "5凸", "柿崎景家": "3凸", "小島弥太郎": "3凸", "松平信康": "1凸", "仙石権兵衛": "1凸", "福留親政": "1凸", "佐久間盛政": "1凸", "可児才蔵": "1凸", "坂井政尚": "3凸", "藤林正保": "1凸"}},
-    "血気Ⅲ": {"type": "汎用", "effect": "兵刃与ダメージ+2.8%", "category": "兵刃与ダメージ上昇", "characters": {"森可成": "3凸", "飯富虎昌": "3凸", "酒井忠次": "無凸", "榊原康政": "3凸", "結城秀康": "3凸", "遠藤直経": "無凸", "真柄直隆": "1凸", "北条綱成": "1凸", "太田資正": "無凸", "陶晴賢": "無凸", "十河一存": "5凸"}},
-    "謀攻Ⅱ": {"type": "汎用", "effect": "自軍全体の計略与ダメージ+3%", "category": "計略与ダメージ上昇", "characters": {"毛利元就": "3凸", "内藤昌豊": "5凸", "河田長親": "1凸", "新発田重家": "無凸", "寿桂尼": "3凸", "鈴木重朝": "3凸", "大内義隆": "1凸"}},
-    "謀攻Ⅲ": {"type": "汎用", "effect": "自軍全体の計略与ダメージ+3.7%", "category": "計略与ダメージ上昇", "characters": {"ねね": "無凸", "吉川広家": "無凸", "福原貞俊": "1凸", "妻木熙子": "無凸"}},
+    "血気Ⅲ": {"type": "汎用", "effect": "兵刃与ダメージ+2.8%", "category": "兵刃与ダメージ上昇", "characters": {"森可成": "3凸", "飯富虎昌": "3凸", "酒井忠次": "0凸", "榊原康政": "3凸", "結城秀康": "3凸", "遠藤直経": "0凸", "真柄直隆": "1凸", "北条綱成": "1凸", "太田資正": "0凸", "陶晴賢": "0凸", "十河一存": "5凸"}},
+    "謀攻Ⅱ": {"type": "汎用", "effect": "自軍全体の計略与ダメージ+3%", "category": "計略与ダメージ上昇", "characters": {"毛利元就": "3凸", "内藤昌豊": "5凸", "河田長親": "1凸", "新発田重家": "0凸", "寿桂尼": "3凸", "鈴木重朝": "3凸", "大内義隆": "1凸"}},
+    "謀攻Ⅲ": {"type": "汎用", "effect": "自軍全体の計略与ダメージ+3.7%", "category": "計略与ダメージ上昇", "characters": {"ねね": "0凸", "吉川広家": "0凸", "福原貞俊": "1凸", "妻木熙子": "0凸"}},
     "防護Ⅱ": {"type": "汎用", "effect": "兵刃被ダメージ-2.2%", "category": "兵刃被ダメージ軽減", "characters": {"ねね": "1凸", "馬場信春": "5凸", "板垣信方": "1凸", "一条信龍": "3凸", "松永久秀": "1凸", "成田甲斐": "5凸", "尼子晴久": "3凸", "佐久間盛政": "3凸", "堀直政": "5凸", "浦上宗景": "3凸"}},
-    "防護Ⅲ": {"type": "汎用", "effect": "兵刃被ダメージ-2.8%", "category": "兵刃被ダメージ軽減", "characters": {"伊達輝宗": "3凸", "毛利輝元": "無凸", "稲葉一鉄": "無凸", "里見義堯": "3凸"}},
-    "馬槍術Ⅱ": {"type": "汎用", "effect": "部隊の騎兵・足軽レベル+2", "category": "兵種レベル", "characters": {"前田利家": "1凸", "お江": "1凸", "前田慶次": "1凸"}},
+    "防護Ⅲ": {"type": "汎用", "effect": "兵刃被ダメージ-2.8%", "category": "兵刃被ダメージ軽減", "characters": {"伊達輝宗": "3凸", "毛利輝元": "0凸", "稲葉一鉄": "0凸", "里見義堯": "3凸"}},
+    "馬槍術Ⅱ": {"type": "汎用", "effect": "部隊の足軽・騎兵レベル+2", "category": "兵種レベル", "characters": {"前田利家": "1凸", "お江": "1凸", "前田慶次": "1凸"}},
     "馬術Ⅰ": {"type": "汎用", "effect": "部隊の騎兵レベル+1", "category": "兵種レベル", "characters": {"宇佐美定満": "5凸", "河田長親": "5凸", "仙桃院": "5凸", "新発田重家": "3凸", "水原親憲": "1凸", "陶晴賢": "5凸"}},
-    "馬術Ⅱ": {"type": "汎用", "effect": "部隊の騎兵レベル+2", "category": "兵種レベル", "characters": {"武田信玄": "5凸", "上杉謙信": "5凸", "佐久間信盛": "5凸", "池田恒興": "1凸", "馬場信春": "3凸", "内藤昌豊": "3凸", "小山田信茂": "1凸", "武田義信": "無凸", "山内一豊": "無凸", "多田三八郎": "無凸", "南部晴政": "1凸", "斎藤義龍": "無凸", "尼子晴久": "無凸", "佐久間盛政": "無凸", "小山田茂誠": "無凸", "瑞渓院": "5凸", "大久保長安": "無凸"}},
-    "馬術Ⅲ": {"type": "汎用", "effect": "部隊の騎兵レベル+3", "category": "兵種レベル", "characters": {"柴田勝家": "1凸", "飯富虎昌": "1凸", "榊原康政": "無凸", "山県昌景": "3凸", "相馬盛胤": "無凸"}},
+    "馬術Ⅱ": {"type": "汎用", "effect": "部隊の騎兵レベル+2", "category": "兵種レベル", "characters": {"武田信玄": "5凸", "上杉謙信": "5凸", "佐久間信盛": "5凸", "池田恒興": "1凸", "馬場信春": "3凸", "内藤昌豊": "3凸", "小山田信茂": "1凸", "武田義信": "0凸", "山内一豊": "0凸", "多田三八郎": "0凸", "南部晴政": "1凸", "斎藤義龍": "0凸", "尼子晴久": "0凸", "佐久間盛政": "0凸", "小山田茂誠": "0凸", "瑞渓院": "5凸", "大久保長安": "0凸"}},
+    "馬術Ⅲ": {"type": "汎用", "effect": "部隊の騎兵レベル+3", "category": "兵種レベル", "characters": {"柴田勝家": "1凸", "飯富虎昌": "1凸", "榊原康政": "0凸", "山県昌景": "3凸", "相馬盛胤": "0凸"}},
     "高揚Ⅱ": {"type": "汎用", "effect": "会心と奇策ダメージ率が3.8％増加", "category": "会心・奇策", "characters": {"伊達政宗": "5凸"}}
 }
 
+# --- 兵種相性の関係定義 ---
+TROOP_TYPES = ["足軽", "騎兵", "弓兵", "鉄砲"]
 
-def get_character_traits(character_name):
-    """指定した武将が所持している特性の一覧を取得する"""
-    owned = []
-    for trait_name, data in TRAIT_DATABASE.items():
-        if character_name in data["characters"]:
-            owned.append({
-                "trait": trait_name,
-                "type": data["type"],
-                "rank": data["characters"][character_name],
-                "effect": data["effect"]
+def get_troop_advantage(attacker_type, defender_type):
+    adv_map = {
+        "足軽": "騎兵",
+        "騎兵": "弓兵",
+        "弓兵": "鉄砲",
+        "鉄砲": "足軽",
+    }
+    if adv_map.get(attacker_type) == defender_type:
+        return 1.125
+    elif adv_map.get(defender_type) == attacker_type:
+        return 0.875
+    return 1.0
+
+def parse_trait_troop_bonus(trait_name):
+    bonuses = []
+    if any(k in trait_name for k in ["槍", "足軽"]):
+        bonuses.append("足軽")
+    if any(k in trait_name for k in ["馬", "騎"]):
+        bonuses.append("騎兵")
+    if any(k in trait_name for k in ["弓"]):
+        bonuses.append("弓兵")
+    if any(k in trait_name for k in ["砲", "鉄砲"]):
+        bonuses.append("鉄砲")
+    return bonuses
+
+# --- 伝授・事件戦法データベース ---
+SKILL_DATABASE = {
+    "（なし）": [0, 0, "-", "-", "兵刃"],
+    "一力当先": [40, 70, "S", "能動", "兵刃"],
+    "境目奮戦": [35, 260, "S", "突撃", "兵刃"],
+    "御旗楯無": [100, 94, "S", "受動", "兵刃"],
+    "攻其不備": [40, 168, "S", "能動", "兵刃"],
+    "紅蓮の炎": [35, 104, "S", "能動", "計略"],
+    "死中求活": [100, 125, "S", "受動", "兵刃"],
+    "七十二の計": [100, 120, "S", "受動", "計略"],
+    "瞬息万変": [45, 162, "S", "能動", "計略"],
+    "所向無敵": [30, 254, "S", "能動", "兵刃"],
+    "乗勝追撃": [30, 136, "S", "突撃", "兵刃"],
+    "陣形崩し": [35, 102, "S", "能動", "兵刃"],
+    "千軍辟易": [35, 106, "S", "能動", "兵刃"],
+    "草木皆兵": [50, 142, "S", "能動", "計略"],
+    "電光石火": [40, 96, "S", "能動", "兵刃"],
+    "勇猛無比": [40, 116, "S", "能動", "兵刃"],
+    "乱世の華": [40, 158, "S", "突撃", "計略"],
+    "理非曲直": [35, 192, "S", "突撃", "兵刃"],
+    "霹靂一撃": [35, 228, "S", "能動", "兵刃"],
+    "離心の計": [35, 352, "S", "事件", "計略"],
+    "有備無患": [40, 60, "S", "能動", "回復"],
+    "按甲休兵": [100, 140, "S", "受動", "休養_非依存"],
+    "懐柔": [35, 48.9, "A", "能動", "休養"],
+    "守禦": [100, 100, "A", "指揮", "回復_非依存"],
+    "恵風和雨": [40, 88, "S", "指揮", "回復"],
+}
+SKILL_LIST = sorted(list(SKILL_DATABASE.keys()))
+
+# --- 武将生データ定義 ---
+RAW_OFFICER_LIST = [
+    # 織田
+    ["織田", "織田信長", "名将", 7, 231, 161, 175, 110, 120, 130, "魔王", "覇王", "攻勢Ⅱ", "砲術Ⅱ", "新生"],
+    ["織田", "明智光秀", "名将", 7, 183, 140, 220, 116, 110, 110, "連歌百韻", "波風", "知謀Ⅱ", "砲術Ⅱ", "時は今"],
+    ["織田", "まつ", "名将", 6, 157, 71, 166, 65, 100, 100, "淑徳", "馬槍術Ⅰ", "忍耐Ⅱ", "守勢Ⅲ", "松柏之操"],
+    ["織田", "帰蝶", "名将", 6, 161, 99, 177, 139, 100, 100, "短刀の契", "忍耐Ⅲ", "知恵Ⅱ", "砲術Ⅱ", "帰蝶の舞"],
+    ["織田", "荒木村重", "名将", 6, 158, 91, 185, 64, 100, 100, "弓術Ⅱ", "知恵Ⅲ", "看破Ⅱ", "堅固Ⅱ", "形影相弔"],
+    ["織田", "佐久間信盛", "名将", 6, 173, 95, 160, 86, 100, 100, "堅固Ⅲ", "固守Ⅱ", "統帥Ⅱ", "馬術Ⅱ", "陣前無我"],
+    ["織田", "妻木煕子", "名将", 6, 116, 55, 182, 60, 100, 100, "謀攻Ⅲ", "砲術Ⅲ", "奮戦Ⅱ", "知恵Ⅱ", "内助の賢"],
+    ["織田", "柴田勝家", "名将", 6, 162, 208, 138, 167, 100, 100, "瓶割り", "馬術Ⅲ", "武威Ⅱ", "血気Ⅱ", "かかれ柴田"],
+    ["織田", "前田慶次", "名将", 6, 127, 206, 132, 123, 100, 100, "傾奇者", "馬槍術Ⅱ", "武威Ⅱ", "牢固Ⅱ", "天下御免"],
+    ["織田", "前田利家", "名将", 6, 158, 186, 121, 114, 100, 100, "算盤勘定", "馬槍術Ⅱ", "奮戦Ⅲ", "武威I", "槍の又左"],
+    ["織田", "明智秀満", "名将", 6, 147, 129, 182, 61, 100, 100, "統帥Ⅲ", "看破Ⅰ", "攻勢Ⅲ", "砲術Ⅱ", "湖水渡り"],
+    ["織田", "稲葉一鉄", "名将", 5, 175, 101, 150, 56, 100, 100, "防護Ⅲ", "統帥Ⅱ", "剛猛I", "槍術Ⅱ", "一徹の意志"],
+    ["織田", "森可成", "名将", 5, 145, 189, 112, 125, 100, 100, "槍術Ⅲ", "攻勢Ⅱ", "血気Ⅲ", "器術Ⅲ", "攻めの三左"],
+    ["織田", "お市", "名将", 3, 128, 64, 156, 97, 100, 100, "砲術Ⅱ", "牢固Ⅲ", "槍術Ⅰ", "器術Ⅱ", "夢幻泡影"],
+
+    # 豊臣
+    ["豊臣", "黒田官兵衛", "名将", 7, 167, 113, 229, 68, 110, 120, "方円の器", "玄謀", "妙計Ⅱ", "砲術Ⅱ", "水の如し"],
+    ["豊臣", "豊臣秀吉", "名将", 7, 180, 111, 228, 81, 110, 120, "人たらし", "立身出世", "器術Ⅱ", "弓砲術Ⅱ", "千成瓢箪"],
+    ["豊臣", "お初", "名将", 6, 143, 63, 171, 68, 100, 100, "手足之愛", "弓槍術Ⅱ", "攻勢Ⅱ", "知恵Ⅱ", "同気連枝"],
+    ["豊臣", "ねね", "名将", 6, 152, 58, 178, 61, 100, 100, "謀攻Ⅲ", "防護Ⅱ", "弓術Ⅱ", "知恵Ⅱ", "比翼連理"],
+    ["豊臣", "加藤清正", "名将", 6, 158, 191, 124, 117, 100, 100, "築城名手", "気勢Ⅲ", "槍術Ⅱ", "武威Ⅱ", "破竹の勢い"],
+    ["豊臣", "宮部継潤", "名将", 6, 153, 72, 199, 77, 100, 100, "弓槍術Ⅱ", "固守Ⅱ", "知謀Ⅱ", "器術Ⅱ", "積水成淵"],
+    ["豊臣", "成田甲斐", "名将", 6, 145, 164, 117, 117, 100, 100, "姫武者", "馬弓術Ⅱ", "猛攻Ⅱ", "防護Ⅱ", "東国無双の麗"],
+    ["豊臣", "竹中半兵衛", "名将", 6, 150, 89, 231, 76, 100, 100, "鳳凰", "知謀Ⅲ", "弓術Ⅲ", "看破Ⅱ", "十面埋伏"],
+    ["豊臣", "福島正則", "名将", 6, 151, 206, 120, 117, 100, 100, "猪武者", "尽力Ⅱ", "槍術Ⅲ", "弓術Ⅰ", "七本槍筆頭"],
+    ["豊臣", "蜂須賀小六", "名将", 5, 126, 166, 173, 79, 100, 100, "弓砲術Ⅱ", "急速Ⅱ", "破敵Ⅲ", "牢固Ⅰ", "楼岸一番"],
+    ["豊臣", "可児才蔵", "名将", 4, 97, 183, 104, 95, 100, 100, "武威Ⅲ", "血気Ⅱ", "攻勢Ⅰ", "槍術Ⅲ", "笹の才蔵"],
+    ["豊臣", "加藤嘉明", "名将", 3, 135, 146, 148, 98, 100, 100, "弓槍術Ⅱ", "武威Ⅱ", "知略Ⅱ", "牢固Ⅱ", "剛毅木訥"],
+
+    # 徳川
+    ["徳川", "酒井忠次", "名将", 7, 187, 187, 153, 119, 110, 110, "血気Ⅲ", "槍術Ⅲ", "統帥Ⅱ", "守勢Ⅰ", "破陣乱舞"],
+    ["徳川", "徳川家康", "名将", 7, 231, 155, 169, 61, 120, 130, "三河武士", "古狸", "牢固Ⅱ", "弓槍術Ⅱ", "三河魂"],
+    ["徳川", "本多忠勝", "名将", 7, 169, 229, 116, 81, 120, 110, "無傷の誇り", "剛猛Ⅱ", "槍術Ⅱ", "器術Ⅱ", "古今独歩"],
+    ["徳川", "お江", "名将", 6, 154, 65, 169, 71, 100, 100, "花枝招展", "馬槍術Ⅱ", "守勢Ⅱ", "知恵Ⅱ", "風姿綽約"],
+    ["徳川", "榊原康政", "名将", 6, 155, 182, 140, 151, 100, 100, "馬術Ⅲ", "急速Ⅱ", "血気Ⅲ", "統帥Ⅰ", "無想掃討"],
+    ["徳川", "松平信康", "名将", 6, 160, 179, 131, 141, 100, 100, "威勢Ⅲ", "血気Ⅱ", "武威Ⅲ", "槍術Ⅱ", "勇志不抜"],
+    ["徳川", "高力清長", "名将", 5, 180, 104, 148, 76, 100, 100, "統帥Ⅲ", "看破Ⅱ", "弓槍術Ⅱ", "守勢Ⅰ", "仏の高力"],
+    ["徳川", "本多正信", "名将", 5, 83, 43, 192, 86, 100, 100, "弓術Ⅱ", "看破Ⅲ", "猛攻Ⅰ", "知恵Ⅲ", "非常の器"],
+
+    # 武田
+    ["武田", "山県昌景", "名将", 7, 169, 224, 139, 162, 110, 120, "赤備え", "勇烈", "馬術Ⅲ", "気勢Ⅰ", "武田之赤備"],
+    ["武田", "真田昌幸", "名将", 7, 176, 105, 231, 76, 110, 120, "老獪", "虚実", "弓砲術Ⅱ", "知恵Ⅰ", "表裏比興"],
+    ["武田", "武田信玄", "名将", 7, 202, 191, 194, 139, 130, 130, "甲斐の虎", "人は城", "固守Ⅱ", "馬術Ⅱ", "風林火山"],
+    ["武田", "甘利虎泰", "名将", 6, 163, 176, 94, 59, 100, 100, "槍術Ⅲ", "破敵Ⅱ", "急速Ⅱ", "武威Ⅱ", "剛の武者"],
+    ["武田", "山本勘助", "名将", 6, 155, 103, 224, 117, 100, 100, "側撃", "弓槍術Ⅱ", "知謀Ⅱ", "攻勢Ⅰ", "啄木鳥"],
+    ["武田", "内藤昌豊", "名将", 6, 154, 101, 189, 68, 100, 100, "牢固Ⅲ", "知恵Ⅱ", "馬術Ⅱ", "謀攻Ⅱ", "死灰復然"],
+    ["武田", "馬場信春", "名将", 6, 203, 161, 170, 102, 110, 110, "不死身", "剛猛Ⅲ", "馬術Ⅱ", "防護Ⅱ", "鬼美濃"],
+    ["武田", "板垣信方", "名将", 6, 165, 88, 176, 47, 100, 100, "知恵Ⅲ", "防護Ⅱ", "器術Ⅲ", "攻勢Ⅰ", "先手必勝"],
+    ["武田", "飯富虎昌", "名将", 6, 136, 203, 95, 109, 100, 100, "赤備え", "馬術Ⅲ", "血気Ⅲ", "武威I", "甲山猛虎"],
+    ["武田", "一条信龍", "名将", 5, 153, 156, 125, 90, 100, 100, "弓術Ⅱ", "統帥Ⅱ", "防護Ⅱ", "剛猛I", "不屈の精神"],
+    ["武田", "岡部元信", "名将", 5, 131, 134, 179, 63, 100, 100, "攻勢Ⅲ", "威勢Ⅱ", "剛猛I", "知恵I", "洞察反撃"],
+    ["武田", "原虎胤", "名将", 5, 108, 185, 96, 69, 100, 100, "統帥Ⅲ", "牢固Ⅱ", "剛猛I", "看破Ⅰ", "夜叉美濃"],
+    ["武田", "諏訪姫", "名将", 4, 143, 75, 145, 100, 100, 100, "猛攻Ⅲ", "器術Ⅱ", "看破Ⅰ", "攻勢Ⅱ", "諏訪の光"],
+
+    # 上杉
+    ["上杉", "柿崎景家", "名将", 7, 157, 222, 137, 135, 110, 110, "騎兵大将", "先駆け", "血気Ⅱ", "猛攻Ⅱ", "越後二天"],
+    ["上杉", "上杉謙信", "名将", 7, 186, 247, 124, 138, 120, 130, "義の将", "越後の龍", "破敵Ⅱ", "馬術Ⅱ", "軍神"],
+    ["上杉", "宇佐美定満", "名将", 6, 153, 112, 209, 103, 100, 100, "老功古実", "堅固Ⅲ", "弓槍術Ⅱ", "馬術Ⅰ", "越後流軍学"],
+    ["上杉", "甘粕景持", "名将", 6, 147, 186, 150, 94, 100, 100, "牢固Ⅲ", "気勢Ⅱ", "急速Ⅱ", "砲術Ⅱ", "疾風怒濤"],
+    ["上杉", "太田資正", "名将", 6, 159, 179, 141, 155, 100, 100, "血気Ⅲ", "急速Ⅱ", "猛攻Ⅲ", "槍術Ⅱ", "三楽犬"],
+    ["上杉", "小島弥太郎", "名将", 5, 104, 193, 57, 105, 100, 100, "一番槍", "槍術Ⅱ", "血気Ⅱ", "牢固Ⅱ", "鬼小島"],
+    ["上杉", "仙桃院", "名将", 5, 148, 67, 140, 94, 100, 100, "猛攻Ⅲ", "急速Ⅱ", "忍耐Ⅱ", "馬術Ⅰ", "献身"],
+    ["上杉", "千坂景親", "名将", 5, 164, 161, 106, 96, 100, 100, "槍術Ⅱ", "剛猛Ⅱ", "統帥Ⅱ", "堅固Ⅰ", "耐苦鍛錬"],
+    ["上杉", "樋口兼豊", "名将", 5, 139, 89, 165, 122, 100, 100, "知謀Ⅲ", "急速Ⅰ", "知恵Ⅱ", "看破Ⅱ", "密報通暁"],
+    ["上杉", "河田長親", "名将", 4, 146, 69, 166, 126, 100, 100, "知謀Ⅲ", "謀攻Ⅱ", "急速Ⅱ", "馬術Ⅰ", "先制攻撃"],
+
+    # 群雄
+    ["群雄", "今川義元", "名将", 7, 194, 174, 177, 132, 110, 120, "公家趣味", "弓兵大将", "善戦Ⅱ", "統帥Ⅱ", "海道一"],
+    ["群雄", "松永久秀", "名将", 7, 173, 113, 222, 110, 110, 120, "清濁併呑", "防護Ⅱ", "砲術Ⅲ", "心尽Ⅰ", "梟雄の計"],
+    ["群雄", "長宗我部元親", "名将", 7, 187, 188, 152, 96, 110, 110, "四州の雄", "足軽大将", "攻勢Ⅱ", "固守Ⅱ", "鬼若子"],
+    ["群雄", "陶晴賢", "名将", 7, 166, 185, 149, 85, 110, 110, "血気Ⅲ", "看破Ⅱ", "武威Ⅲ", "馬術Ⅰ", "冷徹無情"],
+    ["群雄", "北条綱成", "名将", 7, 165, 224, 155, 154, 110, 120, "騎兵大将", "血気Ⅲ", "武威Ⅱ", "牢固Ⅰ", "地黄八幡"],
+    ["群雄", "本願寺顕如", "名将", 7, 182, 119, 180, 78, 110, 120, "求道", "看破Ⅲ", "知謀Ⅰ", "槍砲術Ⅱ", "一切皆空"],
+    ["群雄", "毛利元就", "名将", 7, 180, 110, 247, 63, 110, 130, "謀神", "三矢家訓", "謀攻Ⅱ", "弓術Ⅱ", "百万一心"],
+    ["群雄", "立花道雪", "名将", 7, 173, 193, 148, 120, 110, 110, "雷の化身", "武威Ⅱ", "槍術Ⅱ", "尽力Ⅲ", "電光雷轟"],
+    ["群雄", "立花誾千代", "名将", 7, 163, 200, 136, 111, 110, 110, "近衛斉射", "姫城督", "槍砲術Ⅱ", "武威Ⅰ", "疾風迅雷"],
+    ["群雄", "伊達晴宗", "名将", 6, 156, 181, 133, 112, 100, 100, "看破Ⅲ", "固守Ⅱ", "馬砲術Ⅱ", "攻勢Ⅰ", "掃疑平乱"],
+    ["群雄", "高橋紹運", "名将", 6, 184, 190, 168, 107, 100, 100, "雄略絶倫", "牢固Ⅲ", "攻勢Ⅰ", "弓槍術Ⅱ", "豊後の戦陣"],
+    ["群雄", "寿桂尼", "名将", 6, 148, 35, 183, 34, 100, 100, "知恵Ⅲ", "猛攻Ⅱ", "謀攻Ⅱ", "弓術Ⅱ", "尼御台"],
+    ["群雄", "真柄直隆", "名将", 6, 108, 202, 112, 100, 100, 100, "槍術Ⅱ", "血気Ⅲ", "急速Ⅱ", "武威I", "怪力無双"],
+    ["群雄", "浅井長政", "名将", 6, 161, 184, 129, 123, 100, 100, "槍砲術Ⅱ", "固守Ⅱ", "武威Ⅲ", "血気Ⅰ", "信義貫徹"],
+    ["群雄", "大祝鶴", "名将", 6, 144, 171, 142, 75, 100, 100, "破敵Ⅲ", "統帥Ⅱ", "忍耐Ⅰ", "弓槍術Ⅰ", "月華鶴影"],
+    ["群雄", "大内義隆", "名将", 6, 172, 78, 150, 73, 100, 100, "統帥Ⅲ", "謀攻Ⅱ", "砲術Ⅱ", "忍耐Ⅰ", "末世の道者"],
+    ["群雄", "島津貴久", "名将", 6, 160, 100, 178, 84, 100, 100, "砲術Ⅲ", "守勢Ⅱ", "攻勢Ⅱ", "急速Ⅰ", "旋乾転坤"],
+    ["群雄", "北条氏康", "名将", 6, 182, 137, 185, 100, 110, 110, "禄寿応穏", "上下一心", "堅固Ⅱ", "槍術Ⅱ", "相模の獅子"],
+    ["群雄", "鈴木佐大夫", "名将", 6, 151, 179, 157, 103, 100, 100, "鉄砲大将", "牢固Ⅲ", "破敵Ⅱ", "急速Ⅱ", "弾嵐雨霰"],
+    ["群雄", "安宅冬康", "名将", 5, 145, 72, 161, 84, 100, 100, "弓術Ⅲ", "固守Ⅲ", "堅固Ⅱ", "忍耐Ⅰ", "一舟軒"],
+    ["群雄", "安東愛季", "名将", 5, 174, 110, 174, 70, 100, 100, "牢固Ⅲ", "看破Ⅱ", "知恵Ⅱ", "器術Ⅰ", "斗星北天"],
+    ["群雄", "伊達輝宗", "名将", 5, 153, 80, 134, 88, 100, 100, "統帥Ⅲ", "馬砲術Ⅰ", "防護Ⅲ", "剛猛Ⅰ", "樽俎折衝"],
+    ["群雄", "斎藤義龍", "名将", 5, 165, 163, 142, 108, 100, 100, "馬術Ⅱ", "看破Ⅱ", "堅固Ⅲ", "攻勢Ⅱ", "傲岸不遜"],
+    ["群雄", "十河一存", "名将", 5, 123, 205, 104, 106, 100, 100, "槍術Ⅲ", "武威Ⅱ", "統帥Ⅰ", "血気Ⅲ", "鬼十河"],
+    ["群雄", "瑞溪院", "名将", 5, 138, 45, 143, 77, 100, 100, "堅固Ⅲ", "弓術Ⅱ", "知恵Ⅲ", "馬術Ⅱ", "諸行無常"],
+    ["群雄", "相馬盛胤", "名将", 5, 156, 165, 98, 107, 100, 100, "馬術Ⅲ", "攻勢Ⅱ", "統帥Ⅱ", "急速Ⅲ", "先陣鼓舞"],
+    ["群雄", "津田算長", "名将", 5, 145, 156, 145, 94, 100, 100, "鉄砲大将", "武威Ⅱ", "統帥Ⅱ", "知恵Ⅱ", "津田流砲術"],
+    ["群雄", "南部晴政", "名将", 5, 164, 169, 79, 152, 100, 100, "武威Ⅲ", "馬術Ⅱ", "牢固Ⅱ", "攻勢Ⅰ", "満ちゆく月"],
+    ["群雄", "尼子晴久", "名将", 5, 162, 121, 162, 59, 100, 100, "馬術Ⅱ", "知恵Ⅲ", "防護Ⅱ", "急速Ⅱ", "綱紀粛正"],
+    ["群雄", "毛利隆元", "名将", 5, 165, 92, 165, 56, 100, 100, "弓術Ⅱ", "知恵Ⅲ", "固守Ⅱ", "攻勢Ⅱ", "一心一徳"],
+    ["群雄", "朝倉義景", "名将", 4, 110, 53, 112, 158, 100, 100, "牢固Ⅲ", "統帥Ⅱ", "忍耐Ⅰ", "急速Ⅱ", "落花啼鳥"],
+    ["群雄", "里見義堯", "名将", 4, 165, 106, 165, 80, 100, 100, "弓槍術Ⅱ", "統帥Ⅱ", "防護Ⅲ", "知恵Ⅱ", "仁者の沈勇"],
+]
+
+OFFICER_DATABASE = {}
+for item in RAW_OFFICER_LIST:
+    faction, name, rare, cost, tousotsu, buyou, chiryaku, speed, db_s1_rate, db_s1_dmg, t_main, t_r1, t_r3, t_r5, skill_name = item
+    s_attr = "計略" if chiryaku >= buyou else "兵刃"
+    base_aptitudes = {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}
+    for b_troop in parse_trait_troop_bonus(t_main):
+        if b_troop in base_aptitudes:
+            base_aptitudes[b_troop] += 1
+
+    traits = [
+        {"req": 0, "name": t_main, "troop": parse_trait_troop_bonus(t_main)[0] if parse_trait_troop_bonus(t_main) else None},
+        {"req": 1, "name": t_r1, "troop": parse_trait_troop_bonus(t_r1)[0] if parse_trait_troop_bonus(t_r1) else None},
+        {"req": 3, "name": t_r3, "troop": parse_trait_troop_bonus(t_r3)[0] if parse_trait_troop_bonus(t_r3) else None},
+        {"req": 5, "name": t_r5, "troop": parse_trait_troop_bonus(t_r5)[0] if parse_trait_troop_bonus(t_r5) else None},
+    ]
+    OFFICER_DATABASE[name] = [buyou, chiryaku, tousotsu, speed, skill_name, db_s1_rate, db_s1_dmg, "能動", s_attr, base_aptitudes, traits, faction]
+
+OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
+
+def get_officer_data(o_name):
+    return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 50, 100, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, [], "群雄"])
+
+# --- UI構築ヘルパー ---
+def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
+    st.markdown(f"### {team_name}")
+    selected_troop = st.radio(
+        f"{team_name}の兵種", TROOP_TYPES, index=default_troop_idx, horizontal=True, key=f"{team_prefix}_troop"
+    )
+
+    roles = ["大将", "副将1", "副将2"]
+    team_officers = []
+    total_troop_levels = {t: 0 for t in TROOP_TYPES}
+
+    for idx, role in enumerate(roles):
+        default_idx = OFFICER_LIST.index(default_choices[idx]) if default_choices[idx] in OFFICER_LIST else 0
+        
+        with st.expander(f"【{role}】 {default_choices[idx]}", expanded=(idx==0)):
+            col_sel1, col_sel2 = st.columns([2, 1])
+            with col_sel1:
+                o_name = st.selectbox(f"{role} 武将選択", OFFICER_LIST, index=default_idx, key=f"{team_prefix}_{idx}_select")
+            with col_sel2:
+                rank = st.selectbox("凸数", [0, 1, 2, 3, 4, 5], format_func=lambda x: "無 (★0)" if x==0 else f"★{x}", key=f"{team_prefix}_{idx}_rank")
+
+            o_data = get_officer_data(o_name)
+            o_buyou, o_chiryaku, o_tousotsu, o_speed, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits, o_faction = o_data
+
+            st.markdown("##### 属性 / ステータス")
+            
+            max_pts = 50 + (rank * 10)
+            pt_key = f"{team_prefix}_{idx}_remaining_pts"
+            rank_cache_key = f"{team_prefix}_{idx}_last_rank"
+            alloc_keys = {
+                "武勇": f"{team_prefix}_{idx}_alloc_buyou",
+                "統率": f"{team_prefix}_{idx}_alloc_tousotsu",
+                "知略": f"{team_prefix}_{idx}_alloc_chiryaku",
+                "速度": f"{team_prefix}_{idx}_alloc_speed",
+            }
+
+            for k in alloc_keys.values():
+                if k not in st.session_state:
+                    st.session_state[k] = 0
+
+            if pt_key not in st.session_state or st.session_state.get(rank_cache_key) != rank:
+                st.session_state[rank_cache_key] = rank
+                current_allocated_sum = sum(st.session_state[k] for k in alloc_keys.values())
+                if current_allocated_sum > max_pts:
+                    for k in alloc_keys.values():
+                        st.session_state[k] = 0
+                    st.session_state[pt_key] = max_pts
+                else:
+                    st.session_state[pt_key] = max_pts - current_allocated_sum
+
+            if st.button("全リセット", key=f"{team_prefix}_{idx}_reset"):
+                st.session_state[pt_key] = max_pts
+                for k in alloc_keys.values():
+                    st.session_state[k] = 0
+                st.rerun()
+
+            base_stats = {"武勇": o_buyou, "統率": o_tousotsu, "知略": o_chiryaku, "速度": o_speed}
+            allocated_stats = {}
+            current_remaining = st.session_state[pt_key]
+
+            needs_rerun = False
+            for stat_name, base_val in base_stats.items():
+                input_val = st.number_input(
+                    f"{stat_name} 振分", min_value=0, max_value=base_val + current_remaining,
+                    value=st.session_state[alloc_keys[stat_name]], step=1,
+                    key=f"{team_prefix}_{idx}_input_{stat_name}"
+                )
+                diff = input_val - st.session_state[alloc_keys[stat_name]]
+                if diff != 0:
+                    if current_remaining - diff >= 0:
+                        st.session_state[alloc_keys[stat_name]] = input_val
+                        st.session_state[pt_key] -= diff
+                        needs_rerun = True
+                allocated_stats[stat_name] = base_val + st.session_state[alloc_keys[stat_name]]
+
+            if needs_rerun:
+                st.rerun()
+
+            df_data = []
+            for stat_name, base_val in base_stats.items():
+                alloc_val = st.session_state[alloc_keys[stat_name]]
+                total_val = base_val + alloc_val
+                df_data.append({
+                    "属性": stat_name,
+                    "素": base_val,
+                    "振分": f"+{alloc_val}",
+                    "合計": total_val
+                })
+            df_status = pd.DataFrame(df_data)
+            st.dataframe(df_status, use_container_width=True, hide_index=True)
+
+            st.caption(f"残 **{st.session_state[pt_key]}** / {max_pts} PT (★{rank})")
+
+            st.markdown("---")
+            st.markdown("##### 特性（凸連動）")
+            active_traits = []
+            for t in traits:
+                if rank >= t["req"]:
+                    st.markdown(f"✅ **{t['req']}凸**: {t['name']}")
+                    active_traits.append(t['name'])
+                else:
+                    st.markdown(f"🔒 `{t['req']}凸で開放`: {t['name']}")
+
+            st.markdown("---")
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                s2_name = st.selectbox("伝授/事件1", SKILL_LIST, index=SKILL_LIST.index("有備無患") if "有備無患" in SKILL_LIST else 0, key=f"{team_prefix}_{idx}_s2")
+            with col_s2:
+                s3_name = st.selectbox("伝授/事件2", SKILL_LIST, index=SKILL_LIST.index("離心の計") if "離心の計" in SKILL_LIST else 0, key=f"{team_prefix}_{idx}_s3")
+
+            s2_data = SKILL_DATABASE[s2_name]
+            s3_data = SKILL_DATABASE[s3_name]
+
+            skills = [
+                {"name": db_s1_name, "rate": db_s1_rate / 100.0, "dmg": db_s1_dmg / 100.0, "quality": "固有", "attr": db_s1_attr},
+                {"name": s2_name, "rate": s2_data[0] / 100.0, "dmg": s2_data[1] / 100.0, "quality": s2_data[2], "attr": s2_data[4]},
+                {"name": s3_name, "rate": s3_data[0] / 100.0, "dmg": s3_data[1] / 100.0, "quality": s3_data[2], "attr": s3_data[4]},
+            ]
+
+            team_officers.append({
+                "role": role, "name": o_name, "faction": o_faction, "rank": rank,
+                "buyou": allocated_stats["武勇"], "chiryaku": allocated_stats["知略"], "tousotsu": allocated_stats["統率"], "speed": allocated_stats["速度"],
+                "skills": skills, "traits": active_traits
             })
-    return owned
 
+            for t_type, val in troop_aptitudes.items():
+                if t_type in total_troop_levels:
+                    total_troop_levels[t_type] += val
 
-if __name__ == "__main__":
-    # 動作確認用サンプル出力
-    print("--- 柿崎景家の所持特性 ---")
-    for t in get_character_traits("柿崎景家"):
-        print(f"[{t['type']}] {t['trait']} ({t['rank']}): {t['effect']}")
+    team_troop_level = total_troop_levels.get(selected_troop, 0)
+    
+    st.markdown("##### 連携効果設定")
+    col_link1, col_link2 = st.columns(2)
+    with col_link1:
+        faction_bonus_lv = st.slider("連携(勢力) Lv (0-10)", 0, 10, 0, key=f"{team_prefix}_faction_lv")
+    with col_link2:
+        kamonn_bonus_lv = st.slider("連携(家門) Lv (0-3)", 0, 3, 0, key=f"{team_prefix}_kamonn_lv")
+
+    st.info(f"📊 **{team_name} 合計兵種レベル ({selected_troop})**: **{team_troop_level}** (各武将の適性合計)")
+
+    return team_officers, selected_troop, team_troop_level, faction_bonus_lv, kamonn_bonus_lv
+
+# --- サイドバー設定 ---
+st.sidebar.header("⚙️ 設定")
+initial_hp_per_officer = st.sidebar.number_input("1武将あたりの兵力", min_value=1000, max_value=20000, value=10000, step=1000)
+sim_trials = st.sidebar.selectbox("対戦試行回数", [1000, 5000, 10000], index=0)
+
+# --- メインレイアウト ---
+main_tab1, main_tab2 = st.tabs(["🔵 自軍（あなた）", "🔴 敵軍（対戦相手）"])
+
+with main_tab1:
+    my_team, my_troop, my_troop_lvl, my_faction_lv, my_kamonn_lv = input_team_data("my", "自軍編成", ["上杉謙信", "柿崎景家", "宇佐美定満"], 1)
+
+with main_tab2:
+    enemy_team, enemy_troop, enemy_troop_lvl, enemy_faction_lv, enemy_kamonn_lv = input_team_data("enemy", "敵軍編成", ["織田信長", "柴田勝家", "明智光秀"], 3)
+
+base_my_adv = get_troop_advantage(my_troop, enemy_troop)
+base_enemy_adv = get_troop_advantage(enemy_troop, my_troop)
+my_advantage_mult = base_my_adv * (1.0 + (my_troop_lvl * 0.02))
+enemy_advantage_mult = base_enemy_adv * (1.0 + (enemy_troop_lvl * 0.02))
+
+st.write("---")
+
+# --- ステータス計算ロジック ---
+def calculate_final_attributes(officer, troop_type, team_troop_lvl, faction_lv, kamonn_lv):
+    base_stats = {
+        "武勇": float(officer["buyou"]),
+        "統率": float(officer["tousotsu"]),
+        "知略": float(officer["chiryaku"]),
+        "速度": float(officer["speed"]),
+        "政務": 100.0,
+        "魅力": 100.0
+    }
+    
+    troop_mult_val = team_troop_lvl * 0.02
+    faction_mult = faction_lv * 0.007
+    kamonn_mult = kamonn_lv * 0.01
+    total_mult = 1.0 + troop_mult_val + faction_mult + kamonn_mult
+    
+    multiplied_stats = {}
+    for k, val in base_stats.items():
+        if k in ["政務", "魅力"]:
+            multiplied_stats[k] = val * (1.0 + faction_mult + kamonn_mult)
+        else:
+            multiplied_stats[k] = val * total_mult
+
+    if troop_type == "騎兵":
+        multiplied_stats["武勇"] += 10
+        multiplied_stats["知略"] += 10
+    elif troop_type == "弓兵":
+        multiplied_stats["速度"] += 15
+    elif troop_type == "足軽":
+        multiplied_stats["統率"] += 15
+    elif troop_type == "鉄砲":
+        multiplied_stats["武勇"] += 10
+        multiplied_stats["知略"] += 10
+
+    for t_name in officer["traits"]:
+        if "人は城" in t_name:
+            multiplied_stats["統率"] *= 1.05
+
+    return multiplied_stats
+
+# シミュレーション計算ロジック
+def get_h_hp(hp):
+    if hp <= 1800: return hp * 0.10
+    else: return (1800 * 0.10) + ((hp - 1800) ** 0.85) * 0.15
+
+def calc_heal_cap(skill_rate, chiryaku, current_hp, is_intel_dep=True):
+    h_val = get_h_hp(current_hp)
+    base_val = (1.02 * chiryaku) + h_val if is_intel_dep else h_val
+    return skill_rate * base_val
+
+def get_floor_damage(current_hp, is_skill=False, dmg_rate=1.0, troop_mult=1.0):
+    if current_hp <= 600: base_floor = 11.0
+    elif current_hp <= 3000: base_floor = 18.75 * (current_hp / 1000.0)
+    else: base_floor = (18.75 * 3.0) + (16.0 * ((current_hp - 3000) / 1000.0))
+    raw_floor = base_floor * (20.5 / 18.75) * dmg_rate if is_skill else base_floor
+    return raw_floor * troop_mult
+
+def calc_damage(atk_stat, def_stat, current_hp, dmg_rate=1.0, is_skill=False, troop_mult=1.0):
+    if dmg_rate == 0: return 0
+    floor_val = get_floor_damage(current_hp, is_skill=is_skill, dmg_rate=dmg_rate, troop_mult=troop_mult)
+    eff_atk, eff_def = atk_stat * 1.44, def_stat * 1.44
+    stat_diff = eff_atk - eff_def
+    hp_scaling = (current_hp / 1000.0) ** 1.35
+    stat_component = stat_diff * 0.22 * (current_hp / 1000.0)
+    hp_component = 12.0 * hp_scaling
+    calculated_dmg = (hp_component + stat_component) * dmg_rate
+    final_dmg = max(floor_val, calculated_dmg * troop_mult)
+    return int(final_dmg * random.uniform(0.96, 1.04))
+
+def apply_damage_to_officer(officer, raw_damage):
+    if raw_damage <= 0 or officer["hp"] <= 0: return
+    actual_dmg = min(officer["hp"], raw_damage)
+    dead_now = int(actual_dmg * 0.104)
+    officer["hp"] -= actual_dmg
+    officer["injured_hp"] += (actual_dmg - dead_now)
+    officer["total_dead"] += dead_now
+
+def process_turn_deadification(team):
+    for o in team:
+        if o["injured_hp"] > 0:
+            turn_dead = int(o["injured_hp"] * 0.1036)
+            o["injured_hp"] -= turn_dead
+            o["total_dead"] += turn_dead
+
+def simulate_turn_attack(attacker_team, defender_team, troop_mult):
+    logs = []
+    alive_defenders = [o for o in defender_team if o["hp"] > 0]
+    if not alive_defenders: return 0, []
+    total_turn_dmg = 0
+    for off in attacker_team:
+        if off["hp"] <= 0: continue
+        final_attrs = off["calculated_attrs"]
+        
+        for sk in off["skills"]:
+            if "回復" in sk["attr"] or "休養" in sk["attr"]:
+                if sk["rate"] > 0 and random.random() < sk["rate"]:
+                    ref_intel = final_attrs["知略"]
+                    heal_cap = calc_heal_cap(sk["dmg"], ref_intel, off["hp"], True)
+                    actual_heal = int(min(heal_cap, off["injured_hp"]))
+                    if actual_heal > 0:
+                        off["hp"] += actual_heal
+                        off["injured_hp"] -= actual_heal
+        avg_def = sum(o["calculated_attrs"]["統率"] for o in alive_defenders) / len(alive_defenders)
+        normal_dmg = calc_damage(final_attrs["武勇"], avg_def, off["hp"], 1.0, False, troop_mult)
+        total_turn_dmg += normal_dmg
+        for target in alive_defenders: apply_damage_to_officer(target, normal_dmg // len(alive_defenders))
+        for sk in off["skills"]:
+            if sk["rate"] > 0 and "回復" not in sk["attr"] and "休養" not in sk["attr"] and sk["name"] != "（なし）":
+                if random.random() < sk["rate"]:
+                    stat_val = final_attrs["知略"] if sk["attr"] == "計略" else final_attrs["武勇"]
+                    s_dmg = calc_damage(stat_val, avg_def, off["hp"], sk["dmg"], True, troop_mult)
+                    total_turn_dmg += s_dmg
+                    for target in alive_defenders: apply_damage_to_officer(target, s_dmg // len(alive_defenders))
+                    logs.append(f"【{off['name']}】{sk['name']} → {s_dmg:,}ダメ")
+    return total_turn_dmg, logs
+
+if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_container_width=True):
+    my_wins, enemy_wins, draws = 0, 0, 0
+    end_my_dead_list, end_enemy_dead_list = [], []
+
+    for _ in range(sim_trials):
+        my_team_sim = []
+        for o in my_team:
+            calc_attrs = calculate_final_attributes(o, my_troop, my_troop_lvl, my_faction_lv, my_kamonn_lv)
+            my_team_sim.append({**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0, "calculated_attrs": calc_attrs})
+
+        enemy_team_sim = []
+        for o in enemy_team:
+            calc_attrs = calculate_final_attributes(o, enemy_troop, enemy_troop_lvl, enemy_faction_lv, enemy_kamonn_lv)
+            enemy_team_sim.append({**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0, "calculated_attrs": calc_attrs})
+
+        for turn in range(1, 9):
+            process_turn_deadification(my_team_sim)
+            process_turn_deadification(enemy_team_sim)
+            simulate_turn_attack(my_team_sim, enemy_team_sim, my_advantage_mult)
+            if sum(e["hp"] for e in enemy_team_sim) == 0: break
+            simulate_turn_attack(enemy_team_sim, my_team_sim, enemy_advantage_mult)
+            if sum(m["hp"] for m in my_team_sim) == 0: break
+
+        for o in my_team_sim:
+            fin_dead = int(o["injured_hp"] * 0.42)
+            o["total_dead"] += fin_dead
+        for o in enemy_team_sim:
+            fin_dead = int(o["injured_hp"] * 0.42)
+            o["total_dead"] += fin_dead
+
+        final_my_total = sum(m["hp"] for m in my_team_sim)
+        final_enemy_total = sum(e["hp"] for e in enemy_team_sim)
+        end_my_dead_list.append(sum(m["total_dead"] for m in my_team_sim))
+        end_enemy_dead_list.append(sum(e["total_dead"] for e in enemy_team_sim))
+
+        if final_my_total > final_enemy_total: my_wins += 1
+        elif final_enemy_total > final_my_total: enemy_wins += 1
+        else: draws += 1
+
+    st.subheader(f"📊 対戦結果サマリー ({sim_trials:,} 回対戦)")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("自軍勝率", f"{(my_wins / sim_trials * 100):.1f}%", f"{my_wins:,}勝")
+    col2.metric("引き分け", f"{(draws / sim_trials * 100):.1f}%", f"{draws:,}分")
+    col3.metric("敵軍勝率", f"{(enemy_wins / sim_trials * 100):.1f}%", f"{enemy_wins:,}敗")
