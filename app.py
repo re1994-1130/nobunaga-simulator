@@ -7,7 +7,7 @@ st.set_page_config(
 )
 
 st.title("⚔️ 部隊対戦シミュレータ")
-st.caption("自軍 vs 敵軍 8ターン対戦・勝率検証ツール（兵刃・計略属性対応版）")
+st.caption("自軍 vs 敵軍 8ターン対戦・勝率検証ツール（検証データ準拠ダメージモデル版）")
 
 # --- 伝授・事件戦法データベース ---
 # 構造: "戦法名": [発動確率(%), ダメージ率(%), "品質", "タイプ", "傷害属性("兵刃" or "計略")"]
@@ -91,7 +91,6 @@ SKILL_DATABASE = {
 SKILL_LIST = sorted(list(SKILL_DATABASE.keys()))
 
 # --- 全武将統合データベース ---
-# 構造: "武将名": [武勇, 知略, 統率, "固有戦法名", 発動率(%), ダメージ率(%), 準備T, "タイプ", "傷害属性("兵刃" or "計略")"]
 OFFICER_DATABASE = {
     # 織田・関連
     "柴田勝家": [208, 95, 162, "かかれ柴田", 50, 154, "-", "能動", "兵刃"],
@@ -205,7 +204,7 @@ sim_trials = st.sidebar.selectbox(
     "対戦試行回数", [1000, 5000, 10000], index=0
 )
 
-# 武将選択UI（固有戦法名を表示）
+# 武将選択UI
 def input_team_data(team_prefix, team_name, default_choices):
     st.markdown(f"### {team_name}")
     roles = ["主将", "副将1", "副将2"]
@@ -219,7 +218,6 @@ def input_team_data(team_prefix, team_name, default_choices):
             
             o_buyou, o_chiryaku, o_tousotsu, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_prep, db_s1_type, db_s1_attr = OFFICER_DATABASE[o_name]
 
-            # 固有戦法名の表示を残す
             st.caption(f"・固有戦法: **【{db_s1_name}】**")
 
             s2_default_idx = SKILL_LIST.index("離心の計") if "離心の計" in SKILL_LIST else 0
@@ -243,6 +241,7 @@ def input_team_data(team_prefix, team_name, default_choices):
                 "buyou": o_buyou,
                 "chiryaku": o_chiryaku,
                 "tousotsu": o_tousotsu,
+                "hp": initial_hp_per_officer,
                 "skills": skills
             })
     return team_officers
@@ -258,32 +257,93 @@ with main_tab2:
 
 st.write("---")
 
-# --- ダメージ計算ロジック（兵刃:武勇依存 / 計略:知略依存） ---
-def calc_damage(stat_value, def_power, dmg_rate):
+# ──────────── 検証記事に基づく新しいダメージ計算ロジック ────────────
+
+def get_floor_damage(current_hp, is_skill=False, dmg_rate=1.0):
+    """
+    検証データに基づく『最低保証（床）』の計算
+    - フラット帯 (<=600): 11固定
+    - 線形・高兵力ゾーン (>600): 1000兵あたり18.75（通常攻撃）/ 20.5（戦法ベース）
+    """
+    if current_hp <= 600:
+        base_floor = 11.0
+    elif current_hp <= 3000:
+        base_floor = 18.75 * (current_hp / 1000.0)
+    else:
+        # 3000超でわずかに伸びが鈍化する補正
+        base_floor = (18.75 * 3.0) + (16.0 * ((current_hp - 3000) / 1000.0))
+
+    if is_skill:
+        # 戦法床 = (約20.5 / 18.75) * 通常床 * 戦法ダメージ率
+        skill_floor_base = base_floor * (20.5 / 18.75)
+        return skill_floor_base * dmg_rate
+    else:
+        return base_floor
+
+def calc_damage(atk_stat, def_stat, current_hp, dmg_rate=1.0, is_skill=False):
+    """
+    ダメージ = max(最低保証（床）, 床 + 兵数依存値 + 属性差分)
+    """
     if dmg_rate == 0:
         return 0
-    def_mitigation = 100.0 / (100.0 + def_power)
-    effective_atk = stat_value * dmg_rate
-    return int(effective_atk * def_mitigation * 10)
+
+    # 1. 最低保証（床）の算出
+    floor_val = get_floor_damage(current_hp, is_skill=is_skill, dmg_rate=dmg_rate)
+
+    # 2. 兵力と属性差に基づく基本火力の算出
+    # レベル50補正 (ステータス価値1.44倍)
+    eff_atk = atk_stat * 1.44
+    eff_def = def_stat * 1.44
+    stat_diff = eff_atk - eff_def
+
+    # 兵数スケーリング（兵2000→4000で火力大幅上昇の非線形カーブモデル）
+    hp_scaling = (current_hp / 1000.0) ** 1.35
+    
+    # 属性差による計算（負数は借金として減算）
+    stat_component = stat_diff * 0.22 * (current_hp / 1000.0)
+    hp_component = 12.0 * hp_scaling
+
+    calculated_dmg = (hp_component + stat_component) * dmg_rate
+
+    # 床（最低保証）との最大値比較
+    final_dmg = max(floor_val, calculated_dmg)
+
+    # 実機データ再現: ±4%のランダム不規則性と整数化切り捨て
+    random_factor = random.uniform(0.96, 1.04)
+    return int(final_dmg * random_factor)
 
 def simulate_turn_attack(attacker_team, defender_team):
     turn_dmg = 0
     logs = []
-    avg_def = sum(o["tousotsu"] for o in defender_team) / len(defender_team)
     
+    # 生存している対象の平均統率を算出
+    alive_defenders = [o for o in defender_team if o["hp"] > 0]
+    if not alive_defenders:
+        return 0, []
+        
+    avg_def = sum(o["tousotsu"] for o in alive_defenders) / len(alive_defenders)
+
     for off in attacker_team:
+        if off["hp"] <= 0:
+            continue
+            
+        # --- 1. 通常攻撃 ---
+        normal_dmg = calc_damage(off["buyou"], avg_def, off["hp"], dmg_rate=1.0, is_skill=False)
+        turn_dmg += normal_dmg
+
+        # --- 2. 戦法発動 ---
         for sk in off["skills"]:
             if sk["rate"] > 0 and sk["name"] != "（なし）" and random.random() < sk["rate"]:
-                # 傷害属性に応じて参照ステータスを分岐 (兵刃: 武勇 / 計略: 知略)
                 stat_val = off["chiryaku"] if sk["attr"] == "計略" else off["buyou"]
+                s_dmg = calc_damage(stat_val, avg_def, off["hp"], dmg_rate=sk["dmg"], is_skill=True)
                 
-                dmg = calc_damage(stat_val, avg_def, sk["dmg"])
-                turn_dmg += dmg
+                turn_dmg += s_dmg
                 q_label = f"[{sk['quality']}]" if sk['quality'] != "固有" else "【固有】"
-                logs.append(f"【{off['name']}】{q_label}{sk['name']} → {dmg:,}ダメ")
+                logs.append(f"【{off['name']}】{q_label}{sk['name']} → {s_dmg:,}ダメ")
+
     return turn_dmg, logs
 
-# --- シミュレーション実行 ---
+# ──────────── シミュレーション実行 ────────────
 if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_container_width=True):
 
     total_my_hp_init = initial_hp_per_officer * 3
@@ -296,25 +356,41 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
     end_enemy_hps = []
 
     for _ in range(sim_trials):
-        my_hp = total_my_hp_init
-        enemy_hp = total_enemy_hp_init
+        # 試行ごとに兵力をリセット
+        my_hp_list = [initial_hp_per_officer] * 3
+        enemy_hp_list = [initial_hp_per_officer] * 3
+
+        my_team_sim = [dict(o, hp=initial_hp_per_officer) for o in my_team]
+        enemy_team_sim = [dict(o, hp=initial_hp_per_officer) for o in enemy_team]
 
         for turn in range(8):
             # 自軍攻撃
-            my_dmg, _ = simulate_turn_attack(my_team, enemy_team)
-            enemy_hp = max(0, enemy_hp - my_dmg)
-            if enemy_hp == 0: break
+            my_dmg, _ = simulate_turn_attack(my_team_sim, enemy_team_sim)
+            # 敵軍全体へ均等にダメージ分配・兵力減算
+            dmg_per_enemy = my_dmg // 3
+            for e in enemy_team_sim:
+                e["hp"] = max(0, e["hp"] - dmg_per_enemy)
+
+            enemy_total_hp = sum(e["hp"] for e in enemy_team_sim)
+            if enemy_total_hp == 0: break
 
             # 敵軍攻撃
-            enemy_dmg, _ = simulate_turn_attack(enemy_team, my_team)
-            my_hp = max(0, my_hp - enemy_dmg)
-            if my_hp == 0: break
+            enemy_dmg, _ = simulate_turn_attack(enemy_team_sim, my_team_sim)
+            dmg_per_my = enemy_dmg // 3
+            for m in my_team_sim:
+                m["hp"] = max(0, m["hp"] - dmg_per_my)
 
-        end_my_hps.append(my_hp)
-        end_enemy_hps.append(enemy_hp)
+            my_total_hp = sum(m["hp"] for m in my_team_sim)
+            if my_total_hp == 0: break
 
-        if my_hp > enemy_hp: my_wins += 1
-        elif enemy_hp > my_hp: enemy_wins += 1
+        final_my_total = sum(m["hp"] for m in my_team_sim)
+        final_enemy_total = sum(e["hp"] for e in enemy_team_sim)
+
+        end_my_hps.append(final_my_total)
+        end_enemy_hps.append(final_enemy_total)
+
+        if final_my_total > final_enemy_total: my_wins += 1
+        elif final_enemy_total > final_my_total: enemy_wins += 1
         else: draws += 1
 
     # --- 結果表示 ---
@@ -333,24 +409,31 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
     st.subheader("📜 1戦闘の詳細ログサンプル")
     
     sample_log = []
-    my_hp = total_my_hp_init
-    enemy_hp = total_enemy_hp_init
+    my_team_sample = [dict(o, hp=initial_hp_per_officer) for o in my_team]
+    enemy_team_sample = [dict(o, hp=initial_hp_per_officer) for o in enemy_team]
 
     for turn in range(1, 9):
-        my_dmg, my_sk_logs = simulate_turn_attack(my_team, enemy_team)
-        enemy_hp = max(0, enemy_hp - my_dmg)
-        
-        enemy_dmg, enemy_sk_logs = simulate_turn_attack(enemy_team, my_team)
-        my_hp = max(0, my_hp - enemy_dmg)
+        my_dmg, my_sk_logs = simulate_turn_attack(my_team_sample, enemy_team_sample)
+        dmg_per_e = my_dmg // 3
+        for e in enemy_team_sample:
+            e["hp"] = max(0, e["hp"] - dmg_per_e)
+
+        enemy_dmg, enemy_sk_logs = simulate_turn_attack(enemy_team_sample, my_team_sample)
+        dmg_per_m = enemy_dmg // 3
+        for m in my_team_sample:
+            m["hp"] = max(0, m["hp"] - dmg_per_m)
+
+        cur_my_hp = sum(m["hp"] for m in my_team_sample)
+        cur_enemy_hp = sum(e["hp"] for e in enemy_team_sample)
 
         sample_log.append({
             "T": f"第{turn}T",
             "自軍行動": " / ".join(my_sk_logs) if my_sk_logs else "（発動なし）",
-            "自ダメ": f"{my_dmg:,}",
+            "自与ダメ": f"{my_dmg:,}",
             "敵軍行動": " / ".join(enemy_sk_logs) if enemy_sk_logs else "（発動なし）",
-            "敵ダメ": f"{enemy_dmg:,}",
-            "残兵力(自/敵)": f"{my_hp:,} / {enemy_hp:,}"
+            "敵与ダメ": f"{enemy_dmg:,}",
+            "残兵力(自/敵)": f"{cur_my_hp:,} / {cur_enemy_hp:,}"
         })
-        if my_hp == 0 or enemy_hp == 0: break
+        if cur_my_hp == 0 or cur_enemy_hp == 0: break
 
     st.dataframe(pd.DataFrame(sample_log), hide_index=True, use_container_width=True)
