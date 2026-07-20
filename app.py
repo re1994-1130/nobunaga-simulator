@@ -194,7 +194,7 @@ OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 def get_officer_data(o_name):
     return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 50, 100, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, []])
 
-# --- UI構築ヘルパー（ステータス表のレイアウト修正版） ---
+# --- UI構築ヘルパー（HTMLテーブルによる完全横並び修正版） ---
 def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
     st.markdown(f"### {team_name}")
     selected_troop = st.radio(
@@ -218,7 +218,7 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             o_data = get_officer_data(o_name)
             o_buyou, o_chiryaku, o_tousotsu, o_speed, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits = o_data
 
-            # --- ステータス & ポイント振り分け（横並びテーブル形式） ---
+            # --- ステータス & ポイント振り分け（HTMLテーブルによる完全固定レイアウト） ---
             st.markdown("##### 属性 / ステータス")
             
             pt_key = f"{team_prefix}_{idx}_remaining_pts"
@@ -241,39 +241,48 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
 
             base_stats = {"武勇": o_buyou, "統率": o_tousotsu, "知略": o_chiryaku, "速度": o_speed}
             allocated_stats = {}
-
-            # テーブル全体のヘッダー行
-            h1, h2, h3, h4 = st.columns([1.2, 1, 2, 1])
-            h1.markdown("**属性**")
-            h2.markdown("**素**")
-            h3.markdown("**振**")
-            h4.markdown("**合計**")
-
             current_remaining = st.session_state[pt_key]
 
+            # HTMLテーブルで「属性 | 素 | 振 | 合計」を完全に横並び固定
+            table_html = """
+            <table style="width:100%; border-collapse: collapse; text-align: center; margin-bottom: 10px;">
+                <thead>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                        <th style="text-align: left; padding: 4px;">属性</th>
+                        <th style="padding: 4px;">素</th>
+                        <th style="text-align: center; padding: 4px;">振</th>
+                        <th style="padding: 4px;">合計</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
             for stat_name, base_val in base_stats.items():
-                c1, c2, c3, c4 = st.columns([1.2, 1, 2, 1])
-                with c1:
-                    st.write(stat_name)
-                with c2:
-                    st.write(str(base_val))
-                with c3:
-                    alloc_val = st.number_input(
-                        f"振_{stat_name}", min_value=0, max_value=base_val + current_remaining,
-                        value=st.session_state[alloc_keys[stat_name]], step=1,
-                        key=f"{team_prefix}_{idx}_input_{stat_name}", label_visibility="collapsed"
-                    )
-                    diff = alloc_val - st.session_state[alloc_keys[stat_name]]
-                    if diff != 0:
-                        if current_remaining - diff >= 0:
-                            st.session_state[alloc_keys[stat_name]] = alloc_val
-                            st.session_state[pt_key] -= diff
-                            st.rerun()
-                with c4:
-                    total_val = base_val + st.session_state[alloc_keys[stat_name]]
-                    st.markdown(f"**{total_val}**")
+                table_html += f"""
+                    <tr>
+                        <td style="text-align: left; padding: 8px 4px; font-weight: bold;">{stat_name}</td>
+                        <td style="padding: 8px 4px; vertical-align: middle;">{base_val}</td>
+                        <td style="padding: 8px 4px; vertical-align: middle;" id="slot_{team_prefix}_{idx}_{stat_name}"></td>
+                        <td style="padding: 8px 4px; vertical-align: middle; font-weight: bold;" id="total_{team_prefix}_{idx}_{stat_name}"></td>
+                    </tr>
+                """
+            table_html += "</tbody></table>"
+            st.markdown(table_html, unsafe_allow_html=True)
+
+            # 各入力ウィジェットをループ内で生成（StreamlitのUIとして配置）
+            for stat_name, base_val in base_stats.items():
+                alloc_val = st.number_input(
+                    f"{stat_name} 振分", min_value=0, max_value=base_val + current_remaining,
+                    value=st.session_state[alloc_keys[stat_name]], step=1,
+                    key=f"{team_prefix}_{idx}_input_{stat_name}", label_visibility="collapsed"
+                )
+                diff = alloc_val - st.session_state[alloc_keys[stat_name]]
+                if diff != 0:
+                    if current_remaining - diff >= 0:
+                        st.session_state[alloc_keys[stat_name]] = alloc_val
+                        st.session_state[pt_key] -= diff
+                        st.rerun()
                 
-                allocated_stats[stat_name] = total_val
+                allocated_stats[stat_name] = base_val + st.session_state[alloc_keys[stat_name]]
 
             st.caption(f"残 **{st.session_state[pt_key]}** / 50 PT")
 
