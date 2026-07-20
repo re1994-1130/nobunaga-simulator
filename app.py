@@ -7,195 +7,69 @@ st.set_page_config(
 )
 
 st.title("⚔️ 部隊対戦シミュレータ")
-st.caption("自軍 vs 敵軍 8ターン対戦・勝率検証ツール（検証データ準拠ダメージモデル版）")
+st.caption("自軍 vs 敵軍 8ターン対戦・負傷兵＆回復システム（検証データ準拠完全版）")
 
 # --- 伝授・事件戦法データベース ---
-# 構造: "戦法名": [発動確率(%), ダメージ率(%), "品質", "タイプ", "傷害属性("兵刃" or "計略")"]
+# 構造: "戦法名": [発動確率(%), ダメージ/回復率(%), "品質", "タイプ", "傷害属性/効果類型("兵刃", "計略", "回復", "休養")"]
 SKILL_DATABASE = {
     "（なし）": [0, 0, "-", "-", "兵刃"],
     
-    # ─── 伝授戦法 ───
-    "按甲休兵": [100, 0, "S", "受動", "兵刃"],
-    "以戦養戦": [100, 0, "S", "受動", "兵刃"],
-    "一行三昧": [100, 0, "S", "受動", "計略"],
-    "一領具足": [100, 0, "S", "指揮", "兵刃"],
+    # ─── 攻撃系伝授・事件戦法 ───
     "一力当先": [40, 70, "S", "能動", "兵刃"],
-    "運勝の鼻": [100, 0, "S", "受動", "兵刃"],
-    "回天転運": [40, 0, "S", "能動", "計略"],
-    "奇謀独断": [35, 0, "S", "能動", "計略"],
-    "帰還の凱歌": [45, 0, "S", "能動", "計略"],
-    "気炎万丈": [100, 0, "S", "指揮", "兵刃"],
-    "気勢衝天": [100, 0, "S", "指揮", "兵刃"],
     "境目奮戦": [35, 260, "S", "突撃", "兵刃"],
-    "金鼓連天": [40, 0, "S", "能動", "計略"],
-    "金城湯池": [40, 0, "S", "能動", "兵刃"],
-    "恵風和雨": [100, 0, "S", "指揮", "計略"],
-    "血戦奮闘": [100, 0, "S", "受動", "兵刃"],
-    "五里霧中": [35, 0, "S", "能動", "計略"],
     "御旗楯無": [100, 94, "S", "受動", "兵刃"],
     "攻其不備": [40, 168, "S", "能動", "兵刃"],
-    "甲斐弓騎兵": [100, 0, "S", "兵種", "兵刃"],
     "紅蓮の炎": [35, 104, "S", "能動", "計略"],
-    "剛毅果断": [40, 0, "S", "能動", "兵刃"],
-    "薩摩鉄砲兵": [100, 0, "S", "兵種", "兵刃"],
-    "三河弓兵隊": [100, 0, "S", "兵種", "兵刃"],
     "死中求活": [100, 125, "S", "受動", "兵刃"],
     "七十二の計": [100, 120, "S", "受動", "計略"],
-    "縦横馳突": [40, 0, "S", "能動", "兵刃"],
     "瞬息万変": [45, 162, "S", "能動", "計略"],
     "所向無敵": [30, 254, "S", "能動", "兵刃"],
-    "所領役帳": [35, 0, "S", "能動", "計略"],
     "乗勝追撃": [30, 136, "S", "突撃", "兵刃"],
-    "深慮遠謀": [100, 0, "S", "指揮", "計略"],
     "陣形崩し": [35, 102, "S", "能動", "兵刃"],
-    "水攻干計": [30, 98, "S", "能動", "計略"],
-    "静動自在": [30, 0, "S", "能動", "計略"],
-    "赤備え隊": [100, 88, "S", "兵種", "兵刃"],
     "千軍辟易": [35, 106, "S", "能動", "兵刃"],
-    "戦意消沈": [100, 0, "S", "指揮", "計略"],
-    "戦意崩壊": [35, 0, "S", "突撃", "兵刃"],
-    "前後挟撃": [35, 0, "S", "能動", "兵刃"],
-    "僧兵": [100, 60, "S", "兵種", "兵刃"],
     "草木皆兵": [50, 142, "S", "能動", "計略"],
-    "大太刀力士隊": [100, 100, "S", "兵種", "兵刃"],
-    "大智不智": [30, 104, "S", "能動", "計略"],
-    "知者楽水": [100, 0, "S", "指揮", "計略"],
-    "沈魚落雁": [100, 0, "S", "受動", "計略"],
-    "鉄砲僧兵": [100, 0, "S", "兵種", "兵刃"],
     "電光石火": [40, 96, "S", "能動", "兵刃"],
-    "独立独歩": [100, 0, "S", "受動", "兵刃"],
-    "嚢沙之計": [30, 102, "S", "能動", "計略"],
-    "罵詈雑言": [100, 0, "S", "指揮", "計略"],
-    "盤石耽々": [100, 0, "S", "受動", "計略"],
-    "毘沙門天": [100, 0, "S", "受動", "兵刃"],
-    "百戦錬磨": [100, 0, "S", "受動", "兵刃"],
-    "文武両道": [100, 0, "S", "受動", "兵刃"],
-    "母衣武者": [100, 0, "S", "兵種", "兵刃"],
     "勇猛無比": [40, 116, "S", "能動", "兵刃"],
     "乱世の華": [40, 158, "S", "突撃", "計略"],
     "理非曲直": [35, 192, "S", "突撃", "兵刃"],
     "霹靂一撃": [35, 228, "S", "能動", "兵刃"],
-
-    # ─── 事件戦法 ───
-    "姻戚同盟": [40, 0, "S", "事件", "計略"],
-    "会盟の陣": [100, 0, "S", "事件", "兵刃"],
-    "機に乗ず": [35, 0, "S", "事件", "計略"],
-    "疑心暗鬼": [100, 0, "S", "事件", "計略"],
-    "自立の志": [40, 0, "S", "事件", "兵刃"],
-    "城盗り": [35, 106, "S", "事件", "計略"],
-    "専横専断": [40, 0, "S", "事件", "計略"],
-    "直諫敢行": [30, 0, "S", "事件", "計略"],
-    "雷神斬り": [100, 0, "S", "事件", "兵刃"],
     "離心の計": [35, 352, "S", "事件", "計略"],
+
+    # ─── 回復・補助戦法 ───
+    "有備無患": [40, 60, "S", "能動", "回復"],         # 直接回復型・知略依存
+    "按甲休兵": [100, 140, "S", "受動", "休養_非依存"],   # 休養型・知略非依存
+    "懐柔": [35, 48.9, "A", "能動", "休養"],           # 休養型・知略依存
+    "守禦": [100, 100, "A", "指揮", "回復_非依存"],     # 直接回復型・知略非依存（5T目発動）
+    "恵風和雨": [40, 88, "S", "指揮", "回復"],          # 直接回復型・知略依存
 }
 SKILL_LIST = sorted(list(SKILL_DATABASE.keys()))
 
 # --- 全武将統合データベース ---
 OFFICER_DATABASE = {
     # 織田・関連
-    "柴田勝家": [208, 95, 162, "かかれ柴田", 50, 154, "-", "能動", "兵刃"],
-    "明智光秀": [140, 183, 165, "時は今", 70, 56, "-", "能動", "計略"],
-    "お市": [64, 128, 98, "夢幻泡影", 50, 0, "-", "能動", "計略"],
-    "帰蝶": [99, 161, 120, "帰蝶の舞", 100, 0, "-", "受動", "計略"],
-    "荒木村重": [168, 110, 140, "形影相弔", 45, 192, "-", "能動", "兵刃"],
-    "佐久間信盛": [120, 140, 173, "陣前無我", 55, 0, "-", "能動", "兵刃"],
-    "妻木煕子": [55, 116, 85, "内助の賢", 100, 0, "-", "指揮", "計略"],
-    "前田慶次": [206, 127, 150, "天下御免", 65, 188, "-", "突撃", "兵刃"],
-    "前田利家": [186, 110, 158, "槍の又左", 100, 0, "-", "受動", "兵刃"],
-    "明智秀満": [140, 147, 135, "湖水渡り", 65, 0, "-", "能動", "計略"],
-    "稲葉一鉄": [130, 145, 175, "一徹の意志", 40, 0, "-", "能動", "計略"],
-    "森可成": [189, 90, 145, "攻めの三左", 45, 142, "-", "能動", "兵刃"],
-    "織田信長": [180, 231, 195, "新生", 100, 0, "-", "指揮", "計略"],
-    "まつ": [71, 157, 120, "松柏之操", 100, 0, "-", "指揮", "計略"],
-    "斎藤義龍": [163, 120, 165, "傲岸不遜", 35, 124, "-", "能動", "兵刃"],
+    "柴田勝家": [208, 95, 162, "かかれ柴田", 50, 154, "能動", "兵刃"],
+    "明智光秀": [140, 183, 165, "時は今", 70, 56, "能動", "計略"],
+    "お市": [64, 128, 98, "夢幻泡影", 50, 82, "能動", "回復"],
+    "帰蝶": [99, 161, 120, "帰蝶の舞", 100, 0, "受動", "計略"],
+    "佐久間信盛": [120, 140, 173, "陣前無我", 55, 0, "能動", "兵刃"],
+    "前田慶次": [206, 127, 150, "天下御免", 65, 188, "突撃", "兵刃"],
+    "織田信長": [180, 231, 195, "新生", 100, 0, "指揮", "計略"],
 
-    # 豊臣・関連
-    "黒田官兵衛": [113, 210, 167, "水の如し", 100, 88, "-", "受動", "計略"],
-    "豊臣秀吉": [111, 180, 170, "千成瓢箪", 100, 0, "-", "指揮", "計略"],
-    "お初": [63, 143, 100, "同気連枝", 100, 0, "-", "指揮", "計略"],
-    "ねね": [58, 152, 110, "比翼連理", 100, 92, "-", "指揮", "計略"],
-    "加藤清正": [191, 115, 158, "破竹の勢い", 100, 0, "-", "受動", "兵刃"],
-    "宮部継潤": [80, 153, 120, "積水成淵", 35, 88, "1", "能動", "計略"],
-    "成田甲斐": [164, 110, 145, "東国無双の麗", 100, 0, "-", "受動", "兵刃"],
-    "竹中半兵衛": [89, 215, 150, "十面埋伏", 35, 138, "1", "能動", "計略"],
-    "福島正則": [206, 85, 151, "七本槍筆頭", 100, 0, "-", "受動", "兵刃"],
-    "蜂須賀小六": [166, 126, 140, "楼岸一番", 40, 188, "-", "突撃", "兵刃"],
-    "可児才蔵": [183, 70, 110, "笹の才蔵", 30, 522, "1", "能動", "兵刃"],
-    "加藤嘉明": [146, 120, 135, "剛毅木訥", 45, 86, "-", "指揮", "兵刃"],
-
-    # 徳川・関連
-    "酒井忠次": [187, 135, 187, "破陣乱舞", 50, 206, "-", "能動", "兵刃"],
-    "徳川家康": [155, 231, 210, "三河魂", 100, 0, "-", "指揮", "計略"],
-    "本多忠勝": [229, 110, 190, "古今独歩", 100, 70, "-", "受動", "兵刃"],
-    "お江": [65, 154, 110, "風姿綽約", 100, 0, "-", "指揮", "計略"],
-    "榊原康政": [182, 130, 155, "無想掃討", 60, 102, "-", "能動", "兵刃"],
-    "松平信康": [179, 100, 160, "勇志不抜", 35, 0, "-", "能動", "兵刃"],
-    "高力清長": [104, 180, 140, "仏の高力", 40, 0, "-", "能動", "計略"],
-    "本多正信": [43, 195, 120, "非常の器", 100, 0, "-", "指揮", "計略"],
-
-    # 武田・関連
-    "山県昌景": [224, 120, 169, "武田之赤備", 100, 138, "-", "受動", "兵刃"],
-    "真田昌幸": [105, 210, 176, "表裏比興", 55, 142, "-", "能動", "計略"],
-    "武田信玄": [191, 202, 205, "風林火山", 100, 124, "-", "指揮", "計略"],
-    "甘利虎泰": [176, 100, 163, "剛の武者", 35, 246, "-", "突撃", "兵刃"],
-    "山本勘助": [103, 190, 155, "啄木鳥", 40, 156, "-", "能動", "計略"],
-    "内藤昌豊": [140, 154, 165, "死灰復然", 45, 0, "-", "能動", "計略"],
-    "馬場信春": [161, 140, 203, "鬼美濃", 100, 0, "-", "受動", "兵刃"],
-    "板垣信方": [155, 120, 165, "先手必勝", 35, 134, "-", "能動", "兵刃"],
-    "飯富虎昌": [203, 90, 145, "甲山猛虎", 45, 96, "-", "能動", "兵刃"],
-    "一条信龍": [156, 110, 153, "不屈の精神", 35, 148, "-", "能動", "兵刃"],
-    "岡部元信": [134, 120, 150, "洞察反撃", 35, 304, "1", "能動", "兵刃"],
-    "原虎胤": [185, 80, 120, "夜叉美濃", 100, 0, "-", "受動", "兵刃"],
-    "諏訪姫": [75, 143, 95, "諏訪の光", 45, 0, "-", "能動", "計略"],
-
-    # 上杉・関東・東北関連
-    "柿崎景家": [222, 90, 157, "越後二天", 90, 108, "-", "突撃", "兵刃"],
-    "上杉謙信": [247, 186, 210, "軍神", 100, 160, "-", "受動", "兵刃"],
-    "宇佐美定満": [112, 185, 153, "越後流軍学", 100, 0, "-", "指揮", "計略"],
-    "甘粕景持": [186, 110, 147, "疾風怒濤", 40, 102, "-", "能動", "兵刃"],
-    "太田資正": [179, 120, 159, "三楽犬", 45, 146, "-", "能動", "兵刃"],
-    "小島弥太郎": [193, 60, 104, "鬼小島", 55, 304, "-", "突撃", "兵刃"],
-    "仙桃院": [67, 148, 105, "献身", 100, 262, "-", "指揮", "計略"],
-    "千坂景親": [161, 120, 164, "耐苦鍛錬", 100, 160, "-", "指揮", "兵刃"],
-    "樋口兼豊": [89, 139, 110, "密報通暁", 50, 152, "1", "能動", "計略"],
-    "河田長親": [69, 146, 115, "先制攻撃", 35, 132, "1", "能動", "計略"],
-    "伊達晴宗": [181, 120, 156, "掃疑平乱", 35, 0, "-", "能動", "兵刃"],
-    "伊達輝宗": [80, 153, 125, "樽俎折衝", 30, 0, "-", "指揮", "計略"],
-    "南部晴政": [169, 130, 164, "満ちゆく月", 50, 108, "1", "能動", "兵刃"],
-    "相馬盛胤": [165, 110, 156, "先陣鼓舞", 35, 242, "-", "能動", "兵刃"],
-    "安東愛季": [110, 174, 140, "斗星北天", 45, 0, "-", "能動", "計略"],
-    "北条綱成": [224, 100, 165, "地黄八幡", 35, 174, "1", "能動", "兵刃"],
-    "北条氏康": [178, 182, 190, "相模の獅子", 45, 178, "-", "能動", "計略"],
-    "里見義堯": [184, 120, 165, "仁者の沈勇", 55, 184, "-", "突撃", "兵刃"],
-
-    # 群雄・西国・九州関連
-    "今川義元": [174, 194, 180, "海道一", 70, 134, "-", "突撃", "計略"],
-    "松永久秀": [113, 185, 140, "梟雄の計", 35, 128, "1", "能動", "計略"],
-    "長宗我部元親": [188, 140, 187, "鬼若子", 100, 0, "-", "指揮", "兵刃"],
-    "陶晴賢": [185, 120, 166, "冷徹無情", 35, 142, "-", "能動", "兵刃"],
-    "本願寺顕如": [119, 182, 175, "一切皆空", 100, 72, "-", "受動", "計略"],
-    "毛利元就": [100, 220, 180, "百万一心", 100, 100, "-", "指揮", "計略"],
-    "立花道雪": [193, 150, 173, "電光雷轟", 65, 52, "-", "突撃", "兵刃"],
-    "立花誾千代": [200, 110, 163, "疾風迅雷", 45, 76, "-", "指揮", "兵刃"],
-    "高橋紹運": [190, 130, 184, "豊後の戦陣", 100, 0, "-", "受動", "兵刃"],
-    "寿桂尼": [35, 148, 110, "尼御台", 100, 0, "-", "指揮", "計略"],
-    "真柄直隆": [202, 50, 108, "怪力無双", 75, 333, "2", "能動", "兵刃"],
-    "浅井長政": [184, 110, 161, "信義貫徹", 40, 156, "-", "能動", "兵刃"],
-    "大祝鶴": [171, 100, 144, "月華鶴影", 100, 102, "-", "指揮", "兵刃"],
-    "大内義隆": [78, 172, 130, "末世の道者", 100, 0, "-", "指揮", "計略"],
-    "島津貴久": [126, 160, 150, "旋乾転坤", 30, 126, "-", "能動", "計略"],
-    "鈴木佐大夫": [179, 110, 151, "弾嵐雨霰", 45, 126, "-", "能動", "兵刃"],
-    "安宅冬康": [72, 145, 120, "一舟軒", 40, 0, "-", "能動", "計略"],
-    "十河一存": [205, 80, 123, "鬼十河", 35, 188, "-", "突撃", "兵刃"],
-    "瑞溪院": [45, 138, 100, "諸行無常", 100, 0, "-", "指揮", "計略"],
-    "津田算長": [156, 120, 145, "津田流砲術", 30, 188, "-", "能動", "兵刃"],
-    "尼子晴久": [121, 162, 145, "綱紀粛正", 50, 196, "1", "能動", "計略"],
-    "毛利隆元": [92, 165, 140, "一心一徳", 50, 0, "-", "能動", "計略"],
-    "朝倉義景": [53, 110, 90, "落花啼鳥", 35, 0, "1", "能動", "計略"],
+    # 豊臣・徳川・武田・他
+    "黒田官兵衛": [113, 210, 167, "水の如し", 100, 88, "受動", "計略"],
+    "豊臣秀吉": [111, 180, 170, "千成瓢箪", 100, 0, "指揮", "計略"],
+    "本多忠勝": [229, 110, 190, "古今独歩", 100, 70, "受動", "兵刃"],
+    "本多正信": [43, 195, 120, "非常の器", 100, 66, "指揮", "休養"],  # 休養型固有戦法
+    "徳川家康": [155, 231, 210, "三河魂", 100, 0, "指揮", "計略"],
+    "武田信玄": [191, 202, 205, "風林火山", 100, 124, "指揮", "計略"],
+    "山県昌景": [224, 120, 169, "武田之赤備", 100, 138, "受動", "兵刃"],
+    "上杉謙信": [247, 186, 210, "軍神", 100, 160, "受動", "兵刃"],
+    "今川義元": [174, 194, 180, "海道一", 70, 134, "突撃", "計略"],
+    "朝倉義景": [53, 110, 90, "落花啼鳥", 35, 0, "能動", "計略"],
 }
 OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 
-# --- サイドバー：対戦・環境設定 ---
+# --- UI・設定 ---
 st.sidebar.header("⚙️ 対戦設定")
 initial_hp_per_officer = st.sidebar.number_input(
     "1武将あたりの兵力", min_value=1000, max_value=20000, value=10000, step=1000
@@ -204,7 +78,6 @@ sim_trials = st.sidebar.selectbox(
     "対戦試行回数", [1000, 5000, 10000], index=0
 )
 
-# 武将選択UI
 def input_team_data(team_prefix, team_name, default_choices):
     st.markdown(f"### {team_name}")
     roles = ["主将", "副将1", "副将2"]
@@ -216,12 +89,12 @@ def input_team_data(team_prefix, team_name, default_choices):
             default_idx = OFFICER_LIST.index(default_choices[idx]) if default_choices[idx] in OFFICER_LIST else 0
             o_name = st.selectbox("武将を選択", OFFICER_LIST, index=default_idx, key=f"{team_prefix}_{idx}_select")
             
-            o_buyou, o_chiryaku, o_tousotsu, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_prep, db_s1_type, db_s1_attr = OFFICER_DATABASE[o_name]
+            o_buyou, o_chiryaku, o_tousotsu, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr = OFFICER_DATABASE[o_name]
 
             st.caption(f"・固有戦法: **【{db_s1_name}】**")
 
-            s2_default_idx = SKILL_LIST.index("離心の計") if "離心の計" in SKILL_LIST else 0
-            s3_default_idx = SKILL_LIST.index("所向無敵") if "所向無敵" in SKILL_LIST else 0
+            s2_default_idx = SKILL_LIST.index("有備無患") if "有備無患" in SKILL_LIST else 0
+            s3_default_idx = SKILL_LIST.index("離心の計") if "離心の計" in SKILL_LIST else 0
             
             s2_name = st.selectbox("伝授/事件戦法1", SKILL_LIST, index=s2_default_idx if idx==0 else s3_default_idx, key=f"{team_prefix}_{idx}_s2_name")
             s2_data = SKILL_DATABASE[s2_name]
@@ -241,107 +114,159 @@ def input_team_data(team_prefix, team_name, default_choices):
                 "buyou": o_buyou,
                 "chiryaku": o_chiryaku,
                 "tousotsu": o_tousotsu,
-                "hp": initial_hp_per_officer,
                 "skills": skills
             })
     return team_officers
 
-# --- 自軍・敵軍設定 ---
 main_tab1, main_tab2 = st.tabs(["🔵 自軍（あなた）", "🔴 敵軍（対戦相手）"])
 
 with main_tab1:
-    my_team = input_team_data("my", "自軍編成", ["黒田官兵衛", "上杉謙信", "柴田勝家"])
+    my_team = input_team_data("my", "自軍編成", ["本多正信", "上杉謙信", "柴田勝家"])
 
 with main_tab2:
     enemy_team = input_team_data("enemy", "敵軍編成", ["徳川家康", "武田信玄", "今川義元"])
 
 st.write("---")
 
-# ──────────── 検証記事に基づく新しいダメージ計算ロジック ────────────
+# ──────────── 実測に基づくダメージ & 負傷兵・回復モデル ────────────
+
+def get_h_hp(hp):
+    """共通の兵力カーブ H(兵力) の計算"""
+    if hp <= 1800:
+        return hp * 0.10
+    else:
+        return (1800 * 0.10) + ((hp - 1800) ** 0.85) * 0.15
+
+def calc_heal_cap(skill_rate, chiryaku, current_hp, is_intel_dep=True):
+    """
+    回復上限 ＝ 回復率 ×（1.02×知略 ＋ H(兵力)）
+    ※知略非依存の場合は知略項を除外
+    """
+    h_val = get_h_hp(current_hp)
+    if is_intel_dep:
+        base_val = (1.02 * chiryaku) + h_val
+    else:
+        base_val = h_val
+    return skill_rate * base_val
 
 def get_floor_damage(current_hp, is_skill=False, dmg_rate=1.0):
-    """
-    検証データに基づく『最低保証（床）』の計算
-    - フラット帯 (<=600): 11固定
-    - 線形・高兵力ゾーン (>600): 1000兵あたり18.75（通常攻撃）/ 20.5（戦法ベース）
-    """
+    """最低保証（床）計算"""
     if current_hp <= 600:
         base_floor = 11.0
     elif current_hp <= 3000:
         base_floor = 18.75 * (current_hp / 1000.0)
     else:
-        # 3000超でわずかに伸びが鈍化する補正
         base_floor = (18.75 * 3.0) + (16.0 * ((current_hp - 3000) / 1000.0))
 
     if is_skill:
-        # 戦法床 = (約20.5 / 18.75) * 通常床 * 戦法ダメージ率
-        skill_floor_base = base_floor * (20.5 / 18.75)
-        return skill_floor_base * dmg_rate
-    else:
-        return base_floor
+        return base_floor * (20.5 / 18.75) * dmg_rate
+    return base_floor
 
 def calc_damage(atk_stat, def_stat, current_hp, dmg_rate=1.0, is_skill=False):
-    """
-    ダメージ = max(最低保証（床）, 床 + 兵数依存値 + 属性差分)
-    """
+    """ダメージ計算ロジック"""
     if dmg_rate == 0:
         return 0
 
-    # 1. 最低保証（床）の算出
     floor_val = get_floor_damage(current_hp, is_skill=is_skill, dmg_rate=dmg_rate)
-
-    # 2. 兵力と属性差に基づく基本火力の算出
-    # レベル50補正 (ステータス価値1.44倍)
     eff_atk = atk_stat * 1.44
     eff_def = def_stat * 1.44
     stat_diff = eff_atk - eff_def
 
-    # 兵数スケーリング（兵2000→4000で火力大幅上昇の非線形カーブモデル）
     hp_scaling = (current_hp / 1000.0) ** 1.35
-    
-    # 属性差による計算（負数は借金として減算）
     stat_component = stat_diff * 0.22 * (current_hp / 1000.0)
     hp_component = 12.0 * hp_scaling
 
     calculated_dmg = (hp_component + stat_component) * dmg_rate
-
-    # 床（最低保証）との最大値比較
     final_dmg = max(floor_val, calculated_dmg)
 
-    # 実機データ再現: ±4%のランダム不規則性と整数化切り捨て
     random_factor = random.uniform(0.96, 1.04)
     return int(final_dmg * random_factor)
 
-def simulate_turn_attack(attacker_team, defender_team):
-    turn_dmg = 0
+def apply_damage_to_officer(officer, raw_damage):
+    """
+    被ダメージの分配:
+    - 即死: 10.4% （兵力から恒久減算）
+    - 負傷: 89.6% （兵力から減算し、injured_hp に加算）
+    """
+    if raw_damage <= 0 or officer["hp"] <= 0:
+        return
+
+    actual_dmg = min(officer["hp"], raw_damage)
+    dead_now = int(actual_dmg * 0.104)
+    injured_now = actual_dmg - dead_now
+
+    officer["hp"] -= actual_dmg
+    officer["injured_hp"] += injured_now
+    officer["total_dead"] += dead_now
+
+def process_turn_deadification(team):
+    """ターン境界における負傷兵の戦死化（約10.36%）"""
+    for o in team:
+        if o["injured_hp"] > 0:
+            turn_dead = int(o["injured_hp"] * 0.1036)
+            o["injured_hp"] -= turn_dead
+            o["total_dead"] += turn_dead
+
+def simulate_turn_attack(attacker_team, defender_team, current_turn):
     logs = []
     
-    # 生存している対象の平均統率を算出
     alive_defenders = [o for o in defender_team if o["hp"] > 0]
     if not alive_defenders:
         return 0, []
-        
-    avg_def = sum(o["tousotsu"] for o in alive_defenders) / len(alive_defenders)
+
+    total_turn_dmg = 0
 
     for off in attacker_team:
         if off["hp"] <= 0:
             continue
             
-        # --- 1. 通常攻撃 ---
-        normal_dmg = calc_damage(off["buyou"], avg_def, off["hp"], dmg_rate=1.0, is_skill=False)
-        turn_dmg += normal_dmg
-
-        # --- 2. 戦法発動 ---
+        # --- 1. 回復・休養戦法の処理 ---
         for sk in off["skills"]:
-            if sk["rate"] > 0 and sk["name"] != "（なし）" and random.random() < sk["rate"]:
-                stat_val = off["chiryaku"] if sk["attr"] == "計略" else off["buyou"]
-                s_dmg = calc_damage(stat_val, avg_def, off["hp"], dmg_rate=sk["dmg"], is_skill=True)
-                
-                turn_dmg += s_dmg
-                q_label = f"[{sk['quality']}]" if sk['quality'] != "固有" else "【固有】"
-                logs.append(f"【{off['name']}】{q_label}{sk['name']} → {s_dmg:,}ダメ")
+            if "回復" in sk["attr"] or "休養" in sk["attr"]:
+                if sk["rate"] > 0 and random.random() < sk["rate"]:
+                    # 参照データの選定 (休養型は開戦前データ、直接型は発動時データ)
+                    ref_intel = off["init_chiryaku"] if "休養" in sk["attr"] else off["chiryaku"]
+                    ref_hp = off["init_hp"] if "休養" in sk["attr"] else off["hp"]
+                    is_intel = not ("非依存" in sk["attr"])
 
-    return turn_dmg, logs
+                    heal_cap = calc_heal_cap(sk["dmg"], ref_intel, ref_hp, is_intel_dep=is_intel)
+
+                    # 回復＝min(回復上限, 負傷兵)
+                    actual_heal = int(min(heal_cap, off["injured_hp"]))
+                    
+                    if actual_heal > 0:
+                        off["hp"] += actual_heal
+                        off["injured_hp"] -= actual_heal
+                        logs.append(f"【{off['name']}】{sk['name']} → {actual_heal:,}回復 (残負傷:{off['injured_hp']:,})")
+                    else:
+                        logs.append(f"【{off['name']}】{sk['name']} → 0回復 (空撃ち)")
+
+        # --- 2. 通常攻撃 ---
+        avg_def = sum(o["tousotsu"] for o in alive_defenders) / len(alive_defenders)
+        normal_dmg = calc_damage(off["buyou"], avg_def, off["hp"], dmg_rate=1.0, is_skill=False)
+        total_turn_dmg += normal_dmg
+
+        # 敵軍へダメージ適用（即死10.4% / 負傷89.6%）
+        dmg_per_target = normal_dmg // len(alive_defenders)
+        for target in alive_defenders:
+            apply_damage_to_officer(target, dmg_per_target)
+
+        # --- 3. 攻撃戦法発動 ---
+        for sk in off["skills"]:
+            if sk["rate"] > 0 and not ("回復" in sk["attr"] or "休養" in sk["attr"]) and sk["name"] != "（なし）":
+                if random.random() < sk["rate"]:
+                    stat_val = off["chiryaku"] if sk["attr"] == "計略" else off["buyou"]
+                    s_dmg = calc_damage(stat_val, avg_def, off["hp"], dmg_rate=sk["dmg"], is_skill=True)
+                    
+                    total_turn_dmg += s_dmg
+                    dmg_per_target_sk = s_dmg // len(alive_defenders)
+                    for target in alive_defenders:
+                        apply_damage_to_officer(target, dmg_per_target_sk)
+
+                    q_label = f"[{sk['quality']}]" if sk['quality'] != "固有" else "【固有】"
+                    logs.append(f"【{off['name']}】{q_label}{sk['name']} → {s_dmg:,}ダメ")
+
+    return total_turn_dmg, logs
 
 # ──────────── シミュレーション実行 ────────────
 if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_container_width=True):
@@ -352,42 +277,58 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
     my_wins = 0
     enemy_wins = 0
     draws = 0
-    end_my_hps = []
-    end_enemy_hps = []
+    end_my_dead_list = []
+    end_enemy_dead_list = []
 
     for _ in range(sim_trials):
-        # 試行ごとに兵力をリセット
-        my_hp_list = [initial_hp_per_officer] * 3
-        enemy_hp_list = [initial_hp_per_officer] * 3
+        # 武将状態の初期化
+        my_team_sim = [{
+            **o,
+            "hp": initial_hp_per_officer,
+            "injured_hp": 0,
+            "total_dead": 0,
+            "init_hp": initial_hp_per_officer,
+            "init_chiryaku": o["chiryaku"]
+        } for o in my_team]
 
-        my_team_sim = [dict(o, hp=initial_hp_per_officer) for o in my_team]
-        enemy_team_sim = [dict(o, hp=initial_hp_per_officer) for o in enemy_team]
+        enemy_team_sim = [{
+            **o,
+            "hp": initial_hp_per_officer,
+            "injured_hp": 0,
+            "total_dead": 0,
+            "init_hp": initial_hp_per_officer,
+            "init_chiryaku": o["chiryaku"]
+        } for o in enemy_team]
 
-        for turn in range(8):
-            # 自軍攻撃
-            my_dmg, _ = simulate_turn_attack(my_team_sim, enemy_team_sim)
-            # 敵軍全体へ均等にダメージ分配・兵力減算
-            dmg_per_enemy = my_dmg // 3
-            for e in enemy_team_sim:
-                e["hp"] = max(0, e["hp"] - dmg_per_enemy)
+        for turn in range(1, 9):
+            # 1. ターン境界の戦死化処理
+            process_turn_deadification(my_team_sim)
+            process_turn_deadification(enemy_team_sim)
 
-            enemy_total_hp = sum(e["hp"] for e in enemy_team_sim)
-            if enemy_total_hp == 0: break
+            # 2. 自軍攻撃
+            simulate_turn_attack(my_team_sim, enemy_team_sim, turn)
+            if sum(e["hp"] for e in enemy_team_sim) == 0: break
 
-            # 敵軍攻撃
-            enemy_dmg, _ = simulate_turn_attack(enemy_team_sim, my_team_sim)
-            dmg_per_my = enemy_dmg // 3
-            for m in my_team_sim:
-                m["hp"] = max(0, m["hp"] - dmg_per_my)
+            # 3. 敵軍攻撃
+            simulate_turn_attack(enemy_team_sim, my_team_sim, turn)
+            if sum(m["hp"] for m in my_team_sim) == 0: break
 
-            my_total_hp = sum(m["hp"] for m in my_team_sim)
-            if my_total_hp == 0: break
+        # 終戦精算（引き分け時：残った負傷兵の42%が戦死化）
+        for o in my_team_sim:
+            fin_dead = int(o["injured_hp"] * 0.42)
+            o["total_dead"] += fin_dead
+            o["injured_hp"] -= fin_dead
+
+        for o in enemy_team_sim:
+            fin_dead = int(o["injured_hp"] * 0.42)
+            o["total_dead"] += fin_dead
+            o["injured_hp"] -= fin_dead
 
         final_my_total = sum(m["hp"] for m in my_team_sim)
         final_enemy_total = sum(e["hp"] for e in enemy_team_sim)
 
-        end_my_hps.append(final_my_total)
-        end_enemy_hps.append(final_enemy_total)
+        end_my_dead_list.append(sum(m["total_dead"] for m in my_team_sim))
+        end_enemy_dead_list.append(sum(e["total_dead"] for e in enemy_team_sim))
 
         if final_my_total > final_enemy_total: my_wins += 1
         elif final_enemy_total > final_my_total: enemy_wins += 1
@@ -401,38 +342,38 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
     col2.metric("引き分け", f"{(draws / sim_trials * 100):.1f}%", f"{draws:,}分")
     col3.metric("敵軍勝率", f"{(enemy_wins / sim_trials * 100):.1f}%", f"{enemy_wins:,}敗")
 
-    st.caption(f"・自軍 平均残兵力: {int(sum(end_my_hps)/sim_trials):,} / {total_my_hp_init:,}")
-    st.caption(f"・敵軍 平均残兵力: {int(sum(end_enemy_hps)/sim_trials):,} / {total_enemy_hp_init:,}")
+    avg_my_dead = int(sum(end_my_dead_list) / sim_trials)
+    avg_enemy_dead = int(sum(end_enemy_dead_list) / sim_trials)
+
+    st.caption(f"・自軍 平均確定戦死者数: **{avg_my_dead:,}** / {total_my_hp_init:,} (戦死率: {(avg_my_dead/total_my_hp_init*100):.1f}%)")
+    st.caption(f"・敵軍 平均確定戦死者数: **{avg_enemy_dead:,}** / {total_enemy_hp_init:,} (戦死率: {(avg_enemy_dead/total_enemy_hp_init*100):.1f}%)")
 
     # --- サンプル戦闘ログ ---
     st.write("---")
     st.subheader("📜 1戦闘の詳細ログサンプル")
     
     sample_log = []
-    my_team_sample = [dict(o, hp=initial_hp_per_officer) for o in my_team]
-    enemy_team_sample = [dict(o, hp=initial_hp_per_officer) for o in enemy_team]
+    my_team_sample = [{**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0, "init_hp": initial_hp_per_officer, "init_chiryaku": o["chiryaku"]} for o in my_team]
+    enemy_team_sample = [{**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0, "init_hp": initial_hp_per_officer, "init_chiryaku": o["chiryaku"]} for o in enemy_team]
 
     for turn in range(1, 9):
-        my_dmg, my_sk_logs = simulate_turn_attack(my_team_sample, enemy_team_sample)
-        dmg_per_e = my_dmg // 3
-        for e in enemy_team_sample:
-            e["hp"] = max(0, e["hp"] - dmg_per_e)
+        process_turn_deadification(my_team_sample)
+        process_turn_deadification(enemy_team_sample)
 
-        enemy_dmg, enemy_sk_logs = simulate_turn_attack(enemy_team_sample, my_team_sample)
-        dmg_per_m = enemy_dmg // 3
-        for m in my_team_sample:
-            m["hp"] = max(0, m["hp"] - dmg_per_m)
+        my_dmg, my_sk_logs = simulate_turn_attack(my_team_sample, enemy_team_sample, turn)
+        enemy_dmg, enemy_sk_logs = simulate_turn_attack(enemy_team_sample, my_team_sample, turn)
 
         cur_my_hp = sum(m["hp"] for m in my_team_sample)
+        cur_my_inj = sum(m["injured_hp"] for m in my_team_sample)
         cur_enemy_hp = sum(e["hp"] for e in enemy_team_sample)
+        cur_enemy_inj = sum(e["injured_hp"] for e in enemy_team_sample)
 
         sample_log.append({
-            "T": f"第{turn}T",
-            "自軍行動": " / ".join(my_sk_logs) if my_sk_logs else "（発動なし）",
-            "自与ダメ": f"{my_dmg:,}",
-            "敵軍行動": " / ".join(enemy_sk_logs) if enemy_sk_logs else "（発動なし）",
-            "敵与ダメ": f"{enemy_dmg:,}",
-            "残兵力(自/敵)": f"{cur_my_hp:,} / {cur_enemy_hp:,}"
+            "ターン": f"第{turn}T",
+            "自軍ログ": " / ".join(my_sk_logs) if my_sk_logs else "（攻撃のみ）",
+            "自残兵(負傷)": f"{cur_my_hp:,} ({cur_my_inj:,})",
+            "敵軍ログ": " / ".join(enemy_sk_logs) if enemy_sk_logs else "（攻撃のみ）",
+            "敵残兵(負傷)": f"{cur_enemy_hp:,} ({cur_enemy_inj:,})"
         })
         if cur_my_hp == 0 or cur_enemy_hp == 0: break
 
