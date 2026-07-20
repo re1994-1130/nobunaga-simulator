@@ -231,13 +231,15 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
                 "速度": f"{team_prefix}_{idx}_alloc_speed",
             }
 
-            # 初期化または凸数が変更されたときのポイント再計算
+            # セッションステートの初期化
+            for k in alloc_keys.values():
+                if k not in st.session_state:
+                    st.session_state[k] = 0
+
             if pt_key not in st.session_state or st.session_state.get(rank_cache_key) != rank:
                 st.session_state[rank_cache_key] = rank
-                # 現在の割り振りの合計を計算
-                current_allocated_sum = sum(st.session_state.get(k, 0) for k in alloc_keys.values())
+                current_allocated_sum = sum(st.session_state[k] for k in alloc_keys.values())
                 if current_allocated_sum > max_pts:
-                    # 超過している場合はリセット
                     for k in alloc_keys.values():
                         st.session_state[k] = 0
                     st.session_state[pt_key] = max_pts
