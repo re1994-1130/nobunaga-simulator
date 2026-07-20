@@ -194,7 +194,7 @@ OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 def get_officer_data(o_name):
     return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 50, 100, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, []])
 
-# --- UI構築ヘルパー（ステータス縦並び＆ポイント振り分け・特性縦並び対応） ---
+# --- UI構築ヘルパー（ステータス表のレイアウト修正版） ---
 def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
     st.markdown(f"### {team_name}")
     selected_troop = st.radio(
@@ -218,10 +218,9 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
             o_data = get_officer_data(o_name)
             o_buyou, o_chiryaku, o_tousotsu, o_speed, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_type, db_s1_attr, troop_aptitudes, traits = o_data
 
-            # --- ステータス & ポイント振り分け（縦並び・画像準拠） ---
+            # --- ステータス & ポイント振り分け（横並びテーブル形式） ---
             st.markdown("##### 属性 / ステータス")
             
-            # セッションステートの初期化（ポイント管理）
             pt_key = f"{team_prefix}_{idx}_remaining_pts"
             alloc_keys = {
                 "武勇": f"{team_prefix}_{idx}_alloc_buyou",
@@ -234,44 +233,41 @@ def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
                 for k in alloc_keys.values():
                     st.session_state[k] = 0
 
-            # 全リセットボタン
             if st.button("全リセット", key=f"{team_prefix}_{idx}_reset"):
                 st.session_state[pt_key] = 50
                 for k in alloc_keys.values():
                     st.session_state[k] = 0
+                st.rerun()
 
             base_stats = {"武勇": o_buyou, "統率": o_tousotsu, "知略": o_chiryaku, "速度": o_speed}
             allocated_stats = {}
 
-            # テーブル風ヘッダー
-            h_col1, h_col2, h_col3, h_col4 = st.columns([1.5, 1, 1.5, 1])
-            h_col1.markdown("**属性**")
-            h_col2.markdown("**素**")
-            h_col3.markdown("**振**")
-            h_col4.markdown("**合計**")
+            # テーブル全体のヘッダー行
+            h1, h2, h3, h4 = st.columns([1.2, 1, 2, 1])
+            h1.markdown("**属性**")
+            h2.markdown("**素**")
+            h3.markdown("**振**")
+            h4.markdown("**合計**")
 
             current_remaining = st.session_state[pt_key]
 
             for stat_name, base_val in base_stats.items():
-                c1, c2, c3, c4 = st.columns([1.5, 1, 1.5, 1])
+                c1, c2, c3, c4 = st.columns([1.2, 1, 2, 1])
                 with c1:
                     st.write(stat_name)
                 with c2:
                     st.write(str(base_val))
                 with c3:
-                    # 各項目の数値入力（上下ボタンでの増減）
                     alloc_val = st.number_input(
                         f"振_{stat_name}", min_value=0, max_value=base_val + current_remaining,
                         value=st.session_state[alloc_keys[stat_name]], step=1,
                         key=f"{team_prefix}_{idx}_input_{stat_name}", label_visibility="collapsed"
                     )
-                    # 差分を計算してポイントを連動
                     diff = alloc_val - st.session_state[alloc_keys[stat_name]]
                     if diff != 0:
                         if current_remaining - diff >= 0:
                             st.session_state[alloc_keys[stat_name]] = alloc_val
                             st.session_state[pt_key] -= diff
-                            current_remaining = st.session_state[pt_key]
                             st.rerun()
                 with c4:
                     total_val = base_val + st.session_state[alloc_keys[stat_name]]
