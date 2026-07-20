@@ -204,7 +204,7 @@ sim_trials = st.sidebar.selectbox(
     "対戦試行回数", [1000, 5000, 10000], index=0
 )
 
-# 武将データの入力 UI 作成用関数
+# 武将データの入力 UI 作成用関数（ステータス表示のみ＆入力欄削除）
 def input_team_data(team_prefix, team_name, default_choices):
     st.markdown(f"### {team_name}")
     roles = ["主将", "副将1", "副将2"]
@@ -216,15 +216,10 @@ def input_team_data(team_prefix, team_name, default_choices):
             default_idx = OFFICER_LIST.index(default_choices[idx]) if default_choices[idx] in OFFICER_LIST else 0
             o_name = st.selectbox("武将を選択", OFFICER_LIST, index=default_idx, key=f"{team_prefix}_{idx}_select")
             
-            db_atk, db_def, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_prep, db_s1_type = OFFICER_DATABASE[o_name]
+            o_atk, o_def, db_s1_name, db_s1_rate, db_s1_dmg, db_s1_prep, db_s1_type = OFFICER_DATABASE[o_name]
 
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                o_atk = st.number_input("攻撃力(変更可)", value=db_atk, key=f"{team_prefix}_{idx}_atk")
-            with c2:
-                o_def = st.number_input("防御力(変更可)", value=db_def, key=f"{team_prefix}_{idx}_def")
-            with c3:
-                o_buff = st.number_input("与ダメバフ(%)", min_value=0, max_value=200, value=0, key=f"{team_prefix}_{idx}_buff") / 100.0
+            # 攻撃力・防御力の数値を表示のみ行う
+            st.caption(f"📊 武将ステータス ｜ 攻撃力: **{o_atk}** / 防御力: **{o_def}**")
 
             prep_info = f" / 準備: {db_s1_prep}T" if db_s1_prep != "-" else ""
             st.markdown(f"**▼ 戦法構成**")
@@ -250,7 +245,6 @@ def input_team_data(team_prefix, team_name, default_choices):
                 "name": o_name,
                 "atk": o_atk,
                 "def": o_def,
-                "buff": o_buff,
                 "skills": skills
             })
     return team_officers
@@ -266,13 +260,13 @@ with main_tab2:
 
 st.write("---")
 
-# --- ダメージ計算ロジック ---
-def calc_damage(atk, def_power, dmg_rate, buff):
+# --- ダメージ計算ロジック（攻撃力・防御力・ダメージ率のみで算出） ---
+def calc_damage(atk, def_power, dmg_rate):
     if dmg_rate == 0:
         return 0
     def_mitigation = 100.0 / (100.0 + def_power)
     effective_atk = atk * dmg_rate
-    return int((effective_atk * def_mitigation * 10) * (1.0 + buff))
+    return int(effective_atk * def_mitigation * 10)
 
 def simulate_turn_attack(attacker_team, defender_team):
     turn_dmg = 0
@@ -282,7 +276,7 @@ def simulate_turn_attack(attacker_team, defender_team):
     for off in attacker_team:
         for sk in off["skills"]:
             if sk["rate"] > 0 and sk["name"] != "（なし）" and random.random() < sk["rate"]:
-                dmg = calc_damage(off["atk"], avg_def, sk["dmg"], off["buff"])
+                dmg = calc_damage(off["atk"], avg_def, sk["dmg"])
                 turn_dmg += dmg
                 q_label = f"[{sk['quality']}]" if sk['quality'] != "固有" else "【固有】"
                 logs.append(f"【{off['name']}】{q_label}{sk['name']} → {dmg:,}ダメ")
