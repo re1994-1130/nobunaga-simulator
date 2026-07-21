@@ -43,7 +43,7 @@ TRAIT_DATABASE = {
     "猪武者": {"type": "金帯", "effect": "兵刃ダメージを与えると、60%の確率で1%の会心を獲得し、会心ダメージ+1%（最大6回まで重ね掛け可能）", "category": "会心", "characters": {"福島正則": "無凸"}},
     "玄謀": {"type": "金帯", "effect": "自身が大将の場合、統率が最も高い自軍武将の大将技を発動させる。この効果が発動しなかった場合、3%回避を獲得", "category": "大将技・回避", "characters": {"黒田官兵衛": "1凸"}},
     "瓶割り": {"type": "金帯", "effect": "5ターン目以降、10%の離反を獲得。自身の兵力が50%以下の場合、与ダメージが10%増加", "category": "離反・与ダメージ上昇", "characters": {"柴田勝家": "無凸"}},
-    "甲斐の虎": {"type": "金帯", "effect": "部隊行動速度が10%上昇し、士気消費が10%減少する。占領、攻城命令の実行中は効果が2倍", "category": "行軍・士気", "characters": {"武田信玄": "無凸"}},
+    "甲斐の虎": {"type": "金帯", "effect": "部隊行動速度が10%上昇し、士気消費が10%減少する。占領、攻城命令の実行中は効果が2倍", "category": "行軍・士気", "characters": {"武田信玄": "1凸"}},
     "短刀の契": {"type": "金帯", "effect": "戦闘中、自軍男性大将の全属性+2%", "category": "属性上昇", "characters": {"帰蝶": "無凸"}},
     "禄壽応穏": {"type": "金帯", "effect": "部隊士気上限+5、最大レベルの資源建築1つにつき追加で+3", "category": "士気", "characters": {"北条氏康": "1凸"}},
     "立身出世": {"type": "金帯", "effect": "10回レベルアップするごとに、フリーポイント+3", "category": "育成", "characters": {"豊臣秀吉": "1凸"}},
@@ -51,7 +51,7 @@ TRAIT_DATABASE = {
     "築城名手": {"type": "金帯", "effect": "天守レベルが1上がるごとに、統率+2.4", "category": "内政・属性上昇", "characters": {"加藤清正": "無凸"}},
     "義の将": {"type": "金帯", "effect": "混乱になる確率低下", "category": "制御耐性", "characters": {"上杉謙信": "無凸"}},
     "老功古実": {"type": "金帯", "effect": "初めて能動戦法ダメージを受けた際、その発動者の知略-15", "category": "弱体", "characters": {"宇佐美定満": "無凸"}},
-    "老獪": {"type": "金帯", "effect": "自勢力を大将勢力に変換。未変換時は心攻8%", "category": "勢力変化・心攻", "characters": {"真田昌幸": "無凸"}},
+    "老獪": {"type": "金帯", "effect": "自勢力を大将勢力に変換。未変換時は心攻8%", "category": "勢力変化・心攻", "characters": {"真田昌幸": "1凸"}},
     "腰元斉射": {"type": "金帯", "effect": "通常攻撃後、20%の確率で対象に2ターン持続する麻痺（毎ターン30%の確率で行動不能）を付与", "category": "制御", "characters": {"立花誾千代": "1凸"}},
     "花枝招展": {"type": "金帯", "effect": "自身が通常攻撃を受けると、45%の確率（魅力依存）で自身の兵力を回復（回復率68%、知略依存。最大3回まで）", "category": "回復", "characters": {"お江": "無凸"}},
     "虚実": {"type": "金帯", "effect": "混乱中の敵がいる時、自身被ダメージ-3%（真田家武将は50%適用）", "category": "被ダメージ軽減", "characters": {"真田昌幸": "1凸"}},
@@ -414,12 +414,14 @@ def calc_damage(atk_stat, def_stat, current_hp, dmg_rate=1.0, is_skill=False, tr
     return int(max(floor_val, calculated_dmg * troop_mult) * random.uniform(0.96, 1.04))
 
 def apply_damage_to_officer(officer, raw_damage):
-    if raw_damage <= 0 or officer["hp"] <= 0: return
+    if raw_damage <= 0 or officer["hp"] <= 0: return 0
     actual_dmg = min(officer["hp"], raw_damage)
     dead_now = int(actual_dmg * 0.104)
     officer["hp"] -= actual_dmg
     officer["injured_hp"] += (actual_dmg - dead_now)
     officer["total_dead"] += dead_now
+    officer["defeat_count"] += 1
+    return actual_dmg
 
 def process_turn_deadification(team):
     for o in team:
@@ -428,7 +430,7 @@ def process_turn_deadification(team):
             o["injured_hp"] -= turn_dead
             o["total_dead"] += turn_dead
 
-def simulate_turn_attack(attacker_team, defender_team, troop_mult):
+def simulate_turn_attack(attacker_team, defender_team, troop_mult, turn_num, attacker_label):
     logs = []
     alive_defenders = [o for o in defender_team if o["hp"] > 0]
     if not alive_defenders: return 0, []
@@ -455,13 +457,17 @@ def simulate_turn_attack(attacker_team, defender_team, troop_mult):
                 if random.random() < sk["rate"]:
                     if "回復" in sk["attr"] or "休養" in sk["attr"]:
                         actual_heal = int(min(calc_heal_cap(sk["dmg"], final_attrs["知略"], off["hp"]), off["injured_hp"]))
-                        if actual_heal > 0: off["hp"] += actual_heal; off["injured_hp"] -= actual_heal
+                        if actual_heal > 0:
+                            off["hp"] += actual_heal
+                            off["injured_hp"] -= actual_heal
+                            logs.append(f"[{attacker_label}] 【{off['name']}】が[指揮]戦法「{sk['name']}」を発動、兵力 {actual_heal:,} 回復")
                     else:
                         stat_val = final_attrs["知略"] if sk["attr"] == "計略" else final_attrs["武勇"]
                         s_dmg = calc_damage(stat_val, avg_def, off["hp"], sk["dmg"], True, troop_mult)
                         total_turn_dmg += s_dmg
-                        for target in alive_defenders: apply_damage_to_officer(target, s_dmg // len(alive_defenders))
-                        logs.append(f"【{off['name']}】[指揮]{sk['name']} → {s_dmg:,}ダメ")
+                        for target in alive_defenders:
+                            dealt = apply_damage_to_officer(target, s_dmg // len(alive_defenders))
+                            logs.append(f"[{attacker_label}] 【{off['name']}】[指揮]「{sk['name']}」→ 【{target['name']}】に {dealt:,} 損害 (残兵:{target['hp']:,})")
 
         # 2. 能動
         for sk in sorted_skills:
@@ -469,18 +475,24 @@ def simulate_turn_attack(attacker_team, defender_team, troop_mult):
                 if random.random() < sk["rate"]:
                     if "回復" in sk["attr"] or "休養" in sk["attr"]:
                         actual_heal = int(min(calc_heal_cap(sk["dmg"], final_attrs["知略"], off["hp"]), off["injured_hp"]))
-                        if actual_heal > 0: off["hp"] += actual_heal; off["injured_hp"] -= actual_heal
+                        if actual_heal > 0:
+                            off["hp"] += actual_heal
+                            off["injured_hp"] -= actual_heal
+                            logs.append(f"[{attacker_label}] 【{off['name']}】が[能動]戦法「{sk['name']}」を発動、兵力 {actual_heal:,} 回復")
                     else:
                         stat_val = final_attrs["知略"] if sk["attr"] == "計略" else final_attrs["武勇"]
                         s_dmg = calc_damage(stat_val, avg_def, off["hp"], sk["dmg"], True, troop_mult)
                         total_turn_dmg += s_dmg
-                        for target in alive_defenders: apply_damage_to_officer(target, s_dmg // len(alive_defenders))
-                        logs.append(f"【{off['name']}】[能動]{sk['name']} → {s_dmg:,}ダメ")
+                        for target in alive_defenders:
+                            dealt = apply_damage_to_officer(target, s_dmg // len(alive_defenders))
+                            logs.append(f"[{attacker_label}] 【{off['name']}】[能動]「{sk['name']}」→ 【{target['name']}】に {dealt:,} 損害 (残兵:{target['hp']:,})")
 
         # 3. 通常攻撃
         normal_dmg = calc_damage(final_attrs["武勇"], avg_def, off["hp"], 1.0, False, troop_mult)
         total_turn_dmg += normal_dmg
-        for target in alive_defenders: apply_damage_to_officer(target, normal_dmg // len(alive_defenders))
+        for target in alive_defenders:
+            dealt = apply_damage_to_officer(target, normal_dmg // len(alive_defenders))
+            logs.append(f"[{attacker_label}] 【{off['name']}】の通常攻撃 → 【{target['name']}】に {dealt:,} 損害 (残兵:{target['hp']:,})")
         normal_success = (normal_dmg > 0)
 
         # 4. 突撃
@@ -491,8 +503,9 @@ def simulate_turn_attack(attacker_team, defender_team, troop_mult):
                         stat_val = final_attrs["知略"] if sk["attr"] == "計略" else final_attrs["武勇"]
                         s_dmg = calc_damage(stat_val, avg_def, off["hp"], sk["dmg"], True, troop_mult)
                         total_turn_dmg += s_dmg
-                        for target in alive_defenders: apply_damage_to_officer(target, s_dmg // len(alive_defenders))
-                        logs.append(f"【{off['name']}】[突撃]{sk['name']} → {s_dmg:,}ダメ")
+                        for target in alive_defenders:
+                            dealt = apply_damage_to_officer(target, s_dmg // len(alive_defenders))
+                            logs.append(f"[{attacker_label}] 【{off['name']}】[突撃]「{sk['name']}」→ 【{target['name']}】に {dealt:,} 損害 (残兵:{target['hp']:,})")
 
         # 5. 受動
         for sk in sorted_skills:
@@ -500,27 +513,29 @@ def simulate_turn_attack(attacker_team, defender_team, troop_mult):
                 if random.random() < sk["rate"]:
                     if "回復" in sk["attr"] or "休養" in sk["attr"]:
                         actual_heal = int(min(calc_heal_cap(sk["dmg"], final_attrs["知略"], off["hp"]), off["injured_hp"]))
-                        if actual_heal > 0: off["hp"] += actual_heal; off["injured_hp"] -= actual_heal
+                        if actual_heal > 0:
+                            off["hp"] += actual_heal
+                            off["injured_hp"] -= actual_heal
+                            logs.append(f"[{attacker_label}] 【{off['name']}】が[受動]戦法「{sk['name']}」を発動、兵力 {actual_heal:,} 回復")
                     else:
                         stat_val = final_attrs["知略"] if sk["attr"] == "計略" else final_attrs["武勇"]
                         s_dmg = calc_damage(stat_val, avg_def, off["hp"], sk["dmg"], True, troop_mult)
                         total_turn_dmg += s_dmg
-                        for target in alive_defenders: apply_damage_to_officer(target, s_dmg // len(alive_defenders))
-                        logs.append(f"【{off['name']}】[受動]{sk['name']} → {s_dmg:,}ダメ")
+                        for target in alive_defenders:
+                            dealt = apply_damage_to_officer(target, s_dmg // len(alive_defenders))
+                            logs.append(f"[{attacker_label}] 【{off['name']}】[受動]「{sk['name']}」→ 【{target['name']}】に {dealt:,} 損害 (残兵:{target['hp']:,})")
 
     return total_turn_dmg, logs
 
 if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_container_width=True):
     my_wins, enemy_wins, draws = 0, 0, 0
     
-    # 統計集計用変数
     stat_my_hp_sum, stat_enemy_hp_sum = 0, 0
     stat_my_inj_sum, stat_enemy_inj_sum = 0, 0
     stat_my_dead_sum, stat_enemy_dead_sum = 0, 0
     
-    # 武将ごとの平均ダメージ・損害追跡用
-    my_officer_stats = {o["name"]: {"hp": 0, "dead": 0} for o in my_team}
-    enemy_officer_stats = {o["name"]: {"hp": 0, "dead": 0} for o in enemy_team}
+    my_officer_stats = {o["name"]: {"hp": 0, "dead": 0, "defeat": 0} for o in my_team}
+    enemy_officer_stats = {o["name"]: {"hp": 0, "dead": 0, "defeat": 0} for o in enemy_team}
     
     sample_battle_logs = []
 
@@ -528,24 +543,26 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
         my_team_sim = []
         for o in my_team:
             calc_attrs = calculate_final_attributes(o, my_troop, my_troop_lvl, my_faction_lv, my_kamonn_lv)
-            my_team_sim.append({**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0, "calculated_attrs": calc_attrs})
+            my_team_sim.append({**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0, "defeat_count": 0, "calculated_attrs": calc_attrs})
 
         enemy_team_sim = []
         for o in enemy_team:
             calc_attrs = calculate_final_attributes(o, enemy_troop, enemy_troop_lvl, enemy_faction_lv, enemy_kamonn_lv)
-            enemy_team_sim.append({**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0, "calculated_attrs": calc_attrs})
+            enemy_team_sim.append({**o, "hp": initial_hp_per_officer, "injured_hp": 0, "total_dead": 0, "defeat_count": 0, "calculated_attrs": calc_attrs})
 
         trial_logs = []
         for turn in range(1, 9):
             process_turn_deadification(my_team_sim)
             process_turn_deadification(enemy_team_sim)
             
-            d1, l1 = simulate_turn_attack(my_team_sim, enemy_team_sim, my_advantage_mult)
-            if trial_idx == 0: trial_logs.extend([f"【T{turn} 自軍攻撃】 {lg}" for lg in l1])
+            if trial_idx == 0: trial_logs.append(f"--- ターン {turn} ---")
+            
+            d1, l1 = simulate_turn_attack(my_team_sim, enemy_team_sim, my_advantage_mult, turn, "自軍")
+            if trial_idx == 0: trial_logs.extend(l1)
             if sum(e["hp"] for e in enemy_team_sim) == 0: break
             
-            d2, l2 = simulate_turn_attack(enemy_team_sim, my_team_sim, enemy_advantage_mult)
-            if trial_idx == 0: trial_logs.extend([f"【T{turn} 敵軍攻撃】 {lg}" for lg in l2])
+            d2, l2 = simulate_turn_attack(enemy_team_sim, my_team_sim, enemy_advantage_mult, turn, "敵軍")
+            if trial_idx == 0: trial_logs.extend(l2)
             if sum(m["hp"] for m in my_team_sim) == 0: break
 
         for o in my_team_sim: o["total_dead"] += int(o["injured_hp"] * 0.42)
@@ -570,9 +587,11 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
         for m in my_team_sim:
             my_officer_stats[m["name"]]["hp"] += m["hp"]
             my_officer_stats[m["name"]]["dead"] += m["total_dead"]
+            my_officer_stats[m["name"]]["defeat"] += m["defeat_count"]
         for e in enemy_team_sim:
             enemy_officer_stats[e["name"]]["hp"] += e["hp"]
             enemy_officer_stats[e["name"]]["dead"] += e["total_dead"]
+            enemy_officer_stats[e["name"]]["defeat"] += e["defeat_count"]
 
         if final_my_total_hp > final_enemy_total_hp: my_wins += 1
         elif final_enemy_total_hp > final_my_total_hp: enemy_wins += 1
@@ -597,7 +616,7 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
         
         my_breakdown = []
         for name, data in my_officer_stats.items():
-            my_breakdown.append({"武将名": name, "平均残り兵力": int(data["hp"] / sim_trials), "平均死亡兵数": int(data["dead"] / sim_trials)})
+            my_breakdown.append({"武将名": name, "平均残り兵力": int(data["hp"] / sim_trials), "平均死亡兵数": int(data["dead"] / sim_trials), "撃破数(与ダメ貢献)": int(data["defeat"] / sim_trials)})
         st.dataframe(pd.DataFrame(my_breakdown), use_container_width=True, hide_index=True)
 
     with col_d2:
@@ -608,12 +627,15 @@ if st.button("⚔️ 対戦シミュレーション開始", type="primary", use_
         
         enemy_breakdown = []
         for name, data in enemy_officer_stats.items():
-            enemy_breakdown.append({"武将名": name, "平均残り兵力": int(data["hp"] / sim_trials), "平均死亡兵数": int(data["dead"] / sim_trials)})
+            enemy_breakdown.append({"武将名": name, "平均残り兵力": int(data["hp"] / sim_trials), "平均死亡兵数": int(data["dead"] / sim_trials), "撃破数(与ダメ貢献)": int(data["defeat"] / sim_trials)})
         st.dataframe(pd.DataFrame(enemy_breakdown), use_container_width=True, hide_index=True)
 
-    with st.expander("📜 直近1試合のターン別・戦法発動サンプルログ"):
+    with st.expander("📜 詳細戦闘ログ（ターン別・戦法発動・損害詳細）", expanded=True):
         if sample_battle_logs:
             for lg in sample_battle_logs:
-                st.text(lg)
+                if "--- ターン" in lg:
+                    st.markdown(f"**{lg}**")
+                else:
+                    st.text(lg)
         else:
             st.info("ログがありません")
