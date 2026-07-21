@@ -8,8 +8,8 @@ st.set_page_config(
     page_title="『信長の野望 真戦』部隊対戦シミュレータ", layout="centered"
 )
 
-st.title("⚔️ 部隊対戦シミュレータ（詳細結果出力対応版）")
-st.caption("自軍 vs 敵軍 8ターン対戦（兵種相性・凸特性・戦法発動順・詳細損害データ出力）")
+st.title("⚔️ 部隊対戦シミュレータ（固有戦法データベース対応版）")
+st.caption("自軍 vs 敵軍 8ターン対戦（兵種相性・凸特性・戦法発動順・固有戦法DB参照）")
 
 # --- 特性データベース定義 ---
 TRAIT_DATABASE = {
@@ -39,7 +39,7 @@ TRAIT_DATABASE = {
     "清濁併呑": {"type": "金帯", "effect": "25%の確率で自身がこれから受ける通常攻撃を無効化", "category": "通常攻撃無効", "characters": {"松永久秀": "無凸"}},
     "無傷の誇り": {"type": "金帯", "effect": "戦闘中の兵力損害が減少する", "category": "兵力損害軽減", "characters": {"本多忠勝": "無凸"}},
     "物外軒": {"type": "金帯", "effect": "戦闘中、4ターン目まで能動・突撃戦法の発動確率が4.5%上昇（茶道レベル依存）", "category": "発動率上昇", "characters": {"三好実休": "無凸"}},
-    "独眼竜": {"type": "金帯", "effect": "毎ターン行動前、自身の与ダメージが1ターンの間上昇（上昇値は自身の武勇と知略の差が小さいほど大きくなり、最大10％上昇。自身が大将の場合、最大15％上昇。その差が20％を超えた場合は無効）", "category": "与ダメージ上昇", "characters": {"伊達政宗": "無凸"}},
+    "独眼竜": {"type": "金帯", "effect": "毎ターン行動前、自身の与ダメージが1ターンの間上昇（上昇値は自身の武勇と知略の差が小さいほど大きくなり、最大10％上昇。自身が大将の場合、最大15％上昇。その差が20％を超えた場合は無効）", "category": "與ダメージ上昇", "characters": {"伊達政宗": "1凸"}},
     "猪武者": {"type": "金帯", "effect": "兵刃ダメージを与えると、60%の確率で1%の会心を獲得し、会心ダメージ+1%（最大6回まで重ね掛け可能）", "category": "会心", "characters": {"福島正則": "無凸"}},
     "玄謀": {"type": "金帯", "effect": "自身が大将の場合、統率が最も高い自軍武将の大将技を発動させる。この効果が発動しなかった場合、3%回避を獲得", "category": "大将技・回避", "characters": {"黒田官兵衛": "1凸"}},
     "瓶割り": {"type": "金帯", "effect": "5ターン目以降、10%の離反を獲得。自身の兵力が50%以下の場合、与ダメージが10%増加", "category": "離反・与ダメージ上昇", "characters": {"柴田勝家": "無凸"}},
@@ -99,9 +99,10 @@ def parse_trait_troop_bonus(trait_name):
         bonuses.append("鉄砲")
     return bonuses
 
-# --- 伝授・事件戦法データベース ---
+# --- 総合戦法データベース（伝授・事件戦法 ＋ 固有戦法） ---
 SKILL_DATABASE = {
     "（なし）": [0, 0, "-", "-", "兵刃"],
+    # --- 伝授・事件戦法 ---
     "一力当先": [40, 70, "S", "能動", "兵刃"],
     "境目奮戦": [35, 260, "S", "突撃", "兵刃"],
     "御旗楯無": [100, 94, "S", "受動", "兵刃"],
@@ -126,6 +127,20 @@ SKILL_DATABASE = {
     "懐柔": [35, 48.9, "A", "能動", "休養"],
     "守禦": [100, 100, "A", "指揮", "回復_非依存"],
     "恵風和雨": [40, 88, "S", "指揮", "回復"],
+    # --- 武将固有戦法データベース ---
+    "水の如し": [45, 210, "固有", "能動", "計略"],
+    "かかれ柴田": [35, 220, "固有", "能動", "兵刃"],
+    "一心一徳": [100, 130, "固有", "受動", "回復"],
+    "三河魂": [100, 110, "固有", "受動", "兵刃"],
+    "百万一心": [40, 180, "固有", "能動", "計略"],
+    "風林火山": [100, 120, "固有", "指揮", "兵刃"],
+    "軍神": [35, 240, "固有", "能動", "兵刃"],
+    "千成瓢箪": [40, 160, "固有", "能動", "兵刃"],
+    "魔王": [35, 215, "固有", "能動", "計略"],
+    "海道一": [40, 170, "固有", "能動", "計略"],
+    "相模の獅子": [100, 120, "固有", "受動", "兵刃"],
+    "古今独歩": [100, 135, "固有", "受動", "兵刃"],
+    "武田之赤備": [45, 190, "固有", "能動", "兵刃"],
 }
 SKILL_LIST = sorted(list(SKILL_DATABASE.keys()))
 
@@ -229,7 +244,7 @@ RAW_OFFICER_LIST = [
 
 OFFICER_DATABASE = {}
 for item in RAW_OFFICER_LIST:
-    faction, name, rare, cost, tousotsu, buyou, chiryaku, speed, db_s1_rate, db_s1_dmg, t_main, t_r1, t_r3, t_r5, skill_name = item
+    faction, name, rare, cost, tousotsu, buyou, chiryaku, speed, db_s1_rate_dummy, db_s1_dmg_dummy, t_main, t_r1, t_r3, t_r5, skill_name = item
     s_attr = "計略" if chiryaku >= buyou else "兵刃"
     base_aptitudes = {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}
     for b_troop in parse_trait_troop_bonus(t_main):
@@ -242,12 +257,19 @@ for item in RAW_OFFICER_LIST:
         {"req": 3, "name": t_r3, "troop": parse_trait_troop_bonus(t_r3)[0] if parse_trait_troop_bonus(t_r3) else None},
         {"req": 5, "name": t_r5, "troop": parse_trait_troop_bonus(t_r5)[0] if parse_trait_troop_bonus(t_r5) else None},
     ]
-    OFFICER_DATABASE[name] = [buyou, chiryaku, tousotsu, speed, skill_name, db_s1_rate, db_s1_dmg, "能動", s_attr, base_aptitudes, traits, faction]
+    # SKILL_DATABASE から動的に固有戦法データを参照（未登録の場合はデフォルト値を使用）
+    sk_info = SKILL_DATABASE.get(skill_name, [40, 150, "固有", "能動", s_attr])
+    sk_rate = sk_info[0]
+    sk_dmg = sk_info[1]
+    sk_type = sk_info[3] if len(sk_info) > 3 else "能動"
+    sk_attr = sk_info[4] if len(sk_info) > 4 else s_attr
+
+    OFFICER_DATABASE[name] = [buyou, chiryaku, tousotsu, speed, skill_name, sk_rate, sk_dmg, sk_type, sk_attr, base_aptitudes, traits, faction]
 
 OFFICER_LIST = sorted(list(OFFICER_DATABASE.keys()))
 
 def get_officer_data(o_name):
-    return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 50, 100, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, [], "群雄"])
+    return OFFICER_DATABASE.get(o_name, [100, 100, 100, 100, "汎用", 40, 150, "能動", "兵刃", {"足軽": 1, "騎兵": 1, "弓兵": 1, "鉄砲": 1}, [], "群雄"])
 
 # --- UI構築ヘルパー ---
 def input_team_data(team_prefix, team_name, default_choices, default_troop_idx):
@@ -469,7 +491,7 @@ def simulate_turn_attack(attacker_team, defender_team, troop_mult, turn_num, att
                             dealt = apply_damage_to_officer(target, s_dmg // len(alive_defenders))
                             logs.append(f"[{attacker_label}] 【{off['name']}】[指揮]「{sk['name']}」→ 【{target['name']}】に {dealt:,} 損害 (残兵:{target['hp']:,})")
 
-        # 2. 能動
+        # 2. 能動・固有
         for sk in sorted_skills:
             if ("能動" in sk["type"] or "固有" in sk.get("quality", "")) and "指揮" not in sk["type"] and sk["rate"] > 0 and sk["name"] != "（なし）":
                 if random.random() < sk["rate"]:
@@ -478,14 +500,14 @@ def simulate_turn_attack(attacker_team, defender_team, troop_mult, turn_num, att
                         if actual_heal > 0:
                             off["hp"] += actual_heal
                             off["injured_hp"] -= actual_heal
-                            logs.append(f"[{attacker_label}] 【{off['name']}】が[能動]戦法「{sk['name']}」を発動、兵力 {actual_heal:,} 回復")
+                            logs.append(f"[{attacker_label}] 【{off['name']}】が[能動/固有]戦法「{sk['name']}」を発動、兵力 {actual_heal:,} 回復")
                     else:
                         stat_val = final_attrs["知略"] if sk["attr"] == "計略" else final_attrs["武勇"]
                         s_dmg = calc_damage(stat_val, avg_def, off["hp"], sk["dmg"], True, troop_mult)
                         total_turn_dmg += s_dmg
                         for target in alive_defenders:
                             dealt = apply_damage_to_officer(target, s_dmg // len(alive_defenders))
-                            logs.append(f"[{attacker_label}] 【{off['name']}】[能動]「{sk['name']}」→ 【{target['name']}】に {dealt:,} 損害 (残兵:{target['hp']:,})")
+                            logs.append(f"[{attacker_label}] 【{off['name']}】[能動/固有]「{sk['name']}」→ 【{target['name']}】に {dealt:,} 損害 (残兵:{target['hp']:,})")
 
         # 3. 通常攻撃
         normal_dmg = calc_damage(final_attrs["武勇"], avg_def, off["hp"], 1.0, False, troop_mult)
